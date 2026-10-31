@@ -127,12 +127,32 @@ async function nextSixDigitId(env) {
 }
 function messageImages(message) {
   const urls = [];
-  for (const attachment of message.attachments || []) if (attachment.content_type?.startsWith("image/") && attachment.url) urls.push(attachment.url);
-  for (const embed of message.embeds || []) {
-    if (embed.image?.url) urls.push(embed.image.url);
-    else if (embed.thumbnail?.url) urls.push(embed.thumbnail.url);
+  const imageExtensions = /\\.(?:png|jpe?g|gif|webp|avif|bmp)(?:$|[?#])/i;
+  for (const attachment of Array.isArray(message?.attachments) ? message.attachments : []) {
+    const contentType = String(attachment?.content_type || "").toLowerCase();
+    const filename = String(attachment?.filename || "");
+    const url = typeof attachment?.url === "string" ? attachment.url : "";
+    if (url && (contentType.startsWith("image/") || imageExtensions.test(filename) || imageExtensions.test(url))) urls.push(url);
+  }
+  for (const embed of Array.isArray(message?.embeds) ? message.embeds : []) {
+    if (embed?.image?.url) urls.push(embed.image.url);
+    if (embed?.thumbnail?.url) urls.push(embed.thumbnail.url);
   }
   return [...new Set(urls)].slice(0, 10);
+}
+function parseCoordinates(value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const parts = value.trim().match(/-?\\d+(?:\\.\\d+)?/g);
+  if (!parts || parts.length !== 3) return null;
+  const [x, y, z] = parts.map(Number);
+  if (![x, y, z].every(Number.isFinite)) return null;
+  return { x, y, z };
+}
+function displayCoordinates(value) {
+  const coords = typeof value === "string" ? parseCoordinates(value) : value;
+  return coords && Number.isFinite(coords.x) && Number.isFinite(coords.y) && Number.isFinite(coords.z)
+    ? `X: ${coords.x}, Y: ${coords.y}, Z: ${coords.z}`
+    : "Not set";
 }
 async function fetchSourceMessage(env, channelId, messageId) {
   return await discordApi(env, `/channels/${channelId}/messages/${messageId}`);
@@ -203,10 +223,12 @@ async function handle(interaction, env) {
     const images = messageImages(message);
     const title = cleanText(args.title || "", 180) || null;
     const subtitle = cleanText(args.subtitle || "", 240) || null;
-    const eventData = JSON.stringify({ galleryGroup: group, dimension: cleanText(args.dimension, 80), coordinates: cleanText(args.coordinates, 100) });
+    const dimension = ["overworld", "nether", "end"].includes(String(args.dimension || "").toLowerCase()) ? String(args.dimension).toLowerCase() : null;
+    const coordinates = parseCoordinates(cleanText(args.coordinates, 100));
+    const eventData = JSON.stringify({ galleryGroup: group, dimension, coordinates });
     await env.DB.prepare("INSERT INTO published_posts(post_id,six_digit_id,category,group_name,source_guild_id,source_channel_id,source_message_id,author_discord_id,linked_minecraft_uuid,linked_minecraft_name,title,subtitle,body,image_urls_json,event_data_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
       .bind(postId,sixDigitId,category,group,interaction.guild_id,channelId,messageId,message.author?.id || null,linked?.minecraft_uuid || null,linked?.minecraft_name || null,title,subtitle,body,JSON.stringify(images),eventData).run();
-    return respond(null, true, { title: "Website post published", description: `${title || "Discord message"} was saved in **Gallery / ${group}**. Post ID: **${sixDigitId}**`, fields: [{ name: "Images", value: String(images.length), inline: true }, { name: "Minecraft author", value: linked?.minecraft_name || "Not linked", inline: true }] });
+    return respond(null, true, { title: "Website post published", description: `${title || "Discord message"} was saved in **Gallery / ${group}**. Post ID: **${sixDigitId}**`, fields: [{ name: "Images", value: String(images.length), inline: true }, { name: "Dimension", value: dimension || "Not set", inline: true }, { name: "Coordinates", value: displayCoordinates(coordinates), inline: false }, { name: "Minecraft author", value: linked?.minecraft_name || "Not linked", inline: true }] });
   }
   if (command === "post") {
     if (!(await hasAdminAccess(env, interaction))) return respond("You don’t have permission to manage website posts.");
@@ -225,7 +247,13 @@ async function handle(interaction, env) {
     const linked = await env.DB.prepare("SELECT minecraft_uuid,minecraft_name FROM account_links WHERE discord_user_id=?").bind(message.author?.id || "").first();
     await env.DB.prepare("UPDATE published_posts SET body=?,image_urls_json=?,author_discord_id=?,linked_minecraft_uuid=?,linked_minecraft_name=?,updated_at=CURRENT_TIMESTAMP WHERE post_id=?")
       .bind(cleanText(message.content,4000),JSON.stringify(images),message.author?.id || null,linked?.minecraft_uuid || null,linked?.minecraft_name || null,row.post_id).run();
-    return respond(`Updated website post **${id}** from its original Discord message.`);
+    const savedEventData = (() => { try { return JSON.parse(row.event_data_json || "{}"); } catch { return {}; } })();
+    return respond(null, true, { title: "Website post updated", description: `Post **${id}** has been refreshed from its original Discord message.`, fields: [
+      { name: "Images", value: String(images.length), inline: true },
+      { name: "Dimension", value: savedEventData.dimension || "Not set", inline: true },
+      { name: "Coordinates", value: displayCoordinates(savedEventData.coordinates), inline: false },
+      { name: "Minecraft author", value: linked?.minecraft_name || "Not linked", inline: true }
+    ] });
   }
   if (command === "creator") {
     if (!(await hasAdminAccess(env, interaction))) return respond("You don’t have permission to manage creators.");
