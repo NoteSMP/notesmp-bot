@@ -254,7 +254,8 @@ async function handle(interaction, env) {
     if (!(await hasAdminAccess(env, interaction))) return respond("You don’t have permission to unlink accounts.");
     const discordUser = args.discord_user;
     const discordId = typeof discordUser === "object" ? discordUser.id : discordUser;
-    const uuid = cleanText(args.minecraft_uuid, 36).replace(/-/g,"").toLowerCase();
+    const uuidHex = cleanText(args.minecraft_uuid, 36).replace(/-/g,"").toLowerCase();
+    const uuid = uuidHex.replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
     const deleted = await env.DB.prepare("DELETE FROM account_links WHERE discord_user_id=? AND minecraft_uuid=?").bind(discordId,uuid).run();
     return respond(deleted.meta?.changes ? "The Discord and Minecraft accounts have been unlinked." : "No matching account link was found.");
   }
@@ -484,9 +485,10 @@ export default {
       if (!env.MINECRAFT_API_KEY || request.headers.get("Authorization") !== `Bearer ${env.MINECRAFT_API_KEY}`) return json({error:"Unauthorized"},401);
       let payload; try { payload = await request.json(); } catch { return json({error:"Invalid JSON"},400); }
       const code = String(payload.code || "");
-      const uuid = String(payload.minecraftUuid || "").replace(/-/g,"").toLowerCase();
+      const uuidHex = String(payload.minecraftUuid || "").replace(/-/g,"").toLowerCase();
+      const uuid = uuidHex.replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
       const name = cleanText(payload.minecraftName,16);
-      if (!/^\d{6}$/.test(code) || !/^[0-9a-f]{32}$/.test(uuid) || !/^[A-Za-z0-9_]{3,16}$/.test(name)) return json({error:"Invalid verification payload"},400);
+      if (!/^\d{6}$/.test(code) || !/^[0-9a-f]{32}$/.test(uuidHex) || !/^[A-Za-z0-9_]{3,16}$/.test(name)) return json({error:"Invalid verification payload"},400);
       const now = Math.floor(Date.now()/1000);
       const pending = await env.DB.prepare("SELECT discord_user_id,minecraft_name FROM verification_requests WHERE code=? AND expires_at>?").bind(code,now).first();
       if (!pending) return json({error:"Verification code is invalid or expired"},404);
@@ -503,7 +505,8 @@ export default {
     if (request.method === "POST" && url.pathname === "/minecraft/playerstats") {
       if (!env.MINECRAFT_API_KEY || request.headers.get("Authorization") !== `Bearer ${env.MINECRAFT_API_KEY}`) return json({error:"Unauthorized"},401);
       let payload; try { payload = await request.json(); } catch { return json({error:"Invalid JSON"},400); }
-      const uuid = String(payload.uuid || "").replace(/-/g,"").toLowerCase();
+      const uuidHex = String(payload.uuid || "").replace(/-/g,"").toLowerCase();
+      const uuid = uuidHex.replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
       const username = cleanText(payload.username,16);
       if (!/^[0-9a-f]{32}$/.test(uuid) || !/^[A-Za-z0-9_]{3,16}$/.test(username)) return json({error:"Invalid player identity"},400);
       const base = payload.baseStats || {};
