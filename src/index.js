@@ -447,9 +447,15 @@ export default {
           updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(minecraft_uuid,stat_id)
         );
         CREATE INDEX IF NOT EXISTS idx_player_statistics_uuid ON player_statistics(minecraft_uuid);
+        CREATE TABLE IF NOT EXISTS channel_sync (
+          category TEXT PRIMARY KEY,
+          channel_id TEXT NOT NULL,
+          configured_by TEXT,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
         CREATE TABLE IF NOT EXISTS channel_sync_state (category TEXT PRIMARY KEY, last_message_id TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
       `);
-      return json({ok:true,migrated:["verification_requests","player_statistics","channel_sync_state"]});
+      return json({ok:true,migrated:["verification_requests","player_statistics","channel_sync","channel_sync_state"]});
     }
 
     if (request.method === "POST" && setupPath && url.pathname !== "/setup/migrate") {
