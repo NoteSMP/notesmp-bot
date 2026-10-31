@@ -255,7 +255,7 @@ async function handle(interaction, env) {
     if (!(await hasAdminAccess(env, interaction))) return respond("You don’t have permission to unlink accounts.");
     const discordUser = args.discord_user;
     const discordId = typeof discordUser === "object" ? discordUser.id : discordUser;
-    const uuid = cleanText(args.minecraft_uuid, 36);
+    const uuid = cleanText(args.minecraft_uuid, 36).replace(/-/g,"").toLowerCase();
     const deleted = await env.DB.prepare("DELETE FROM account_links WHERE discord_user_id=? AND minecraft_uuid=?").bind(discordId,uuid).run();
     return respond(deleted.meta?.changes ? "The Discord and Minecraft accounts have been unlinked." : "No matching account link was found.");
   }
