@@ -437,25 +437,30 @@ export default {
       const authorization = request.headers.get("Authorization") || "";
       if (!secret || (authorization !== secret && authorization !== `Bearer ${secret}`)) return json({error:"Unauthorized"},401);
       await env.DB.exec(`
-        CREATE TABLE IF NOT EXISTS verification_requests (
-          code TEXT PRIMARY KEY, discord_user_id TEXT NOT NULL UNIQUE, minecraft_name TEXT NOT NULL,
-          expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL
-        );
+        CREATE TABLE IF NOT EXISTS bot_config (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS access_entries (entry_type TEXT NOT NULL CHECK (entry_type IN ('user','role')), discord_id TEXT NOT NULL, added_by TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(entry_type, discord_id));
+        CREATE TABLE IF NOT EXISTS published_posts (post_id TEXT PRIMARY KEY, six_digit_id TEXT NOT NULL UNIQUE, category TEXT NOT NULL, group_name TEXT, source_guild_id TEXT NOT NULL, source_channel_id TEXT NOT NULL, source_message_id TEXT NOT NULL, author_discord_id TEXT, linked_minecraft_uuid TEXT, linked_minecraft_name TEXT, title TEXT, subtitle TEXT, body TEXT NOT NULL DEFAULT '', image_urls_json TEXT NOT NULL DEFAULT '[]', event_data_json TEXT, published_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(source_guild_id, source_channel_id, source_message_id, category));
+        CREATE INDEX IF NOT EXISTS idx_posts_category_date ON published_posts(category, published_at DESC);
+        CREATE TABLE IF NOT EXISTS channel_sync (category TEXT PRIMARY KEY CHECK(category IN ('rules','updates')), channel_id TEXT NOT NULL, configured_by TEXT, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS website_links (link_key TEXT PRIMARY KEY CHECK(link_key IN ('discord','youtube','modpack','bluemap')), url TEXT NOT NULL, updated_by TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS verification_codes (code TEXT PRIMARY KEY, discord_user_id TEXT NOT NULL UNIQUE, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL);
+        CREATE INDEX IF NOT EXISTS idx_verification_expiry ON verification_codes(expires_at);
+        CREATE TABLE IF NOT EXISTS account_links (discord_user_id TEXT PRIMARY KEY UNIQUE, minecraft_uuid TEXT NOT NULL UNIQUE, minecraft_name TEXT NOT NULL, linked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS creators (twitch_login TEXT PRIMARY KEY, added_by TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, last_checked_at TEXT, live_started_at TEXT, live_title TEXT, live_url TEXT, live_thumbnail_url TEXT);
+        CREATE TABLE IF NOT EXISTS status_message (id INTEGER PRIMARY KEY CHECK(id=1), channel_id TEXT NOT NULL, message_id TEXT, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS server_state (id INTEGER PRIMARY KEY CHECK(id=1), online INTEGER NOT NULL DEFAULT 0, players_online INTEGER NOT NULL DEFAULT 0, max_players INTEGER NOT NULL DEFAULT 0, motd TEXT NOT NULL DEFAULT '', version TEXT, online_players_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT);
+        INSERT OR IGNORE INTO server_state (id, online, players_online, max_players, motd, online_players_json) VALUES (1,0,0,0,'','[]');
+        CREATE TABLE IF NOT EXISTS players (uuid TEXT PRIMARY KEY, username TEXT NOT NULL, first_join TEXT, last_seen TEXT, playtime_seconds INTEGER NOT NULL DEFAULT 0, blocks_broken INTEGER NOT NULL DEFAULT 0, blocks_placed INTEGER NOT NULL DEFAULT 0, deaths INTEGER NOT NULL DEFAULT 0, kills INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+        CREATE INDEX IF NOT EXISTS idx_players_username ON players(username COLLATE NOCASE);
+        CREATE INDEX IF NOT EXISTS idx_players_playtime ON players(playtime_seconds DESC);
+        CREATE INDEX IF NOT EXISTS idx_players_last_seen ON players(last_seen DESC);
+        CREATE TABLE IF NOT EXISTS verification_requests (code TEXT PRIMARY KEY, discord_user_id TEXT NOT NULL UNIQUE, minecraft_name TEXT NOT NULL, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL);
         CREATE INDEX IF NOT EXISTS idx_verification_requests_expiry ON verification_requests(expires_at);
-        CREATE TABLE IF NOT EXISTS player_statistics (
-          minecraft_uuid TEXT NOT NULL, stat_id TEXT NOT NULL, stat_value REAL NOT NULL DEFAULT 0,
-          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(minecraft_uuid,stat_id)
-        );
+        CREATE TABLE IF NOT EXISTS player_statistics (minecraft_uuid TEXT NOT NULL, stat_id TEXT NOT NULL, stat_value REAL NOT NULL DEFAULT 0, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(minecraft_uuid,stat_id));
         CREATE INDEX IF NOT EXISTS idx_player_statistics_uuid ON player_statistics(minecraft_uuid);
-        CREATE TABLE IF NOT EXISTS channel_sync (
-          category TEXT PRIMARY KEY,
-          channel_id TEXT NOT NULL,
-          configured_by TEXT,
-          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
         CREATE TABLE IF NOT EXISTS channel_sync_state (category TEXT PRIMARY KEY, last_message_id TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
       `);
-      return new Response(JSON.stringify({ok:true,migrated:["verification_requests","player_statistics","channel_sync","channel_sync_state"]}), {
+      return new Response(JSON.stringify({ok:true,migrated:["bot_config","access_entries","published_posts","channel_sync","website_links","verification_codes","account_links","creators","status_message","server_state","players","verification_requests","player_statistics","channel_sync_state"]}), {
         status: 200,
         headers: {
           "Content-Type": "application/json; charset=utf-8",
