@@ -434,6 +434,51 @@ export default {
       });
     }
 
+
+    if (request.method === "POST" && url.pathname === "/minecraft/verify") {
+      if (!env.MINECRAFT_API_KEY || request.headers.get("Authorization") !== `Bearer ${env.MINECRAFT_API_KEY}`) return json({error:"Unauthorized"},401);
+      let payload; try { payload = await request.json(); } catch { return json({error:"Invalid JSON"},400); }
+      const code = String(payload.code || "");
+      const uuid = String(payload.minecraftUuid || "").replace(/-/g,"").toLowerCase();
+      const name = cleanText(payload.minecraftName,16);
+      if (!/^\d{6}$/.test(code) || !/^[0-9a-f]{32}$/.test(uuid) || !/^[A-Za-z0-9_]{3,16}$/.test(name)) return json({error:"Invalid verification payload"},400);
+      const now = Math.floor(Date.now()/1000);
+      const pending = await env.DB.prepare("SELECT discord_user_id,minecraft_name FROM verification_requests WHERE code=? AND expires_at>?").bind(code,now).first();
+      if (!pending) return json({error:"Verification code is invalid or expired"},404);
+      if (pending.minecraft_name.toLowerCase() !== name.toLowerCase()) return json({error:"Minecraft username does not match the requested account"},400);
+      try {
+        await env.DB.prepare("INSERT INTO account_links(discord_user_id,minecraft_uuid,minecraft_name) VALUES(?,?,?)").bind(pending.discord_user_id,uuid,name).run();
+      } catch {
+        return json({error:"This Discord account or Minecraft UUID is already linked"},409);
+      }
+      await env.DB.prepare("DELETE FROM verification_requests WHERE code=?").bind(code).run();
+      await env.DB.prepare("DELETE FROM verification_codes WHERE discord_user_id=?").bind(pending.discord_user_id).run();
+      return json({ok:true,discordUserId:pending.discord_user_id,minecraftUuid:uuid,minecraftName:name});
+    }
+    if (request.method === "POST" && url.pathname === "/minecraft/playerstats") {
+      if (!env.MINECRAFT_API_KEY || request.headers.get("Authorization") !== `Bearer ${env.MINECRAFT_API_KEY}`) return json({error:"Unauthorized"},401);
+      let payload; try { payload = await request.json(); } catch { return json({error:"Invalid JSON"},400); }
+      const uuid = String(payload.uuid || "").replace(/-/g,"").toLowerCase();
+      const username = cleanText(payload.username,16);
+      if (!/^[0-9a-f]{32}$/.test(uuid) || !/^[A-Za-z0-9_]{3,16}$/.test(username)) return json({error:"Invalid player identity"},400);
+      const base = payload.baseStats || {};
+      const number = key => Number.isFinite(Number(base[key])) && Number(base[key]) >= 0 ? Number(base[key]) : 0;
+      await env.DB.prepare(`INSERT INTO players(uuid,username,first_join,last_seen,playtime_seconds,blocks_broken,blocks_placed,deaths,kills,updated_at)
+        VALUES(?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+        ON CONFLICT(uuid) DO UPDATE SET username=excluded.username,last_seen=excluded.last_seen,
+        playtime_seconds=excluded.playtime_seconds,blocks_broken=excluded.blocks_broken,blocks_placed=excluded.blocks_placed,
+        deaths=excluded.deaths,kills=excluded.kills,updated_at=CURRENT_TIMESTAMP`)
+        .bind(uuid,username,typeof payload.firstJoin==="string"?payload.firstJoin:null,typeof payload.lastSeen==="string"?payload.lastSeen:null,
+          number("playtime_seconds"),number("blocks_broken"),number("blocks_placed"),number("deaths"),number("kills")).run();
+      const stats = payload.statistics && typeof payload.statistics === "object" ? Object.entries(payload.statistics).slice(0,500) : [];
+      for (const [statId,value] of stats) {
+        if (!/^[a-z0-9_.:-]{1,100}$/i.test(statId) || !Number.isFinite(Number(value)) || Number(value)<0) continue;
+        await env.DB.prepare("INSERT INTO player_statistics(minecraft_uuid,stat_id,stat_value) VALUES(?,?,?) ON CONFLICT(minecraft_uuid,stat_id) DO UPDATE SET stat_value=excluded.stat_value,updated_at=CURRENT_TIMESTAMP")
+          .bind(uuid,statId,Number(value)).run();
+      }
+      return json({ok:true,statsStored:stats.length});
+    }
+
     if (request.method !== "POST" || url.pathname !== "/interactions") return json({ error: "Not found" }, 404);
     const body = await request.text();
     if (!(await verifyDiscordRequest(request, body, env.DISCORD_PUBLIC_KEY))) return json({ error: "Invalid request signature" }, 401);
