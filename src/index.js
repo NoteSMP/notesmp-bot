@@ -73,6 +73,14 @@ export default {
     }
 
     const body = await request.text();
+    // Temporary safe diagnostic: log binding presence/type/length, never its value.
+    console.log("Discord env diagnostic:", {
+      hasPublicKey: Object.prototype.hasOwnProperty.call(env, "DISCORD_PUBLIC_KEY"),
+      keyType: typeof env.DISCORD_PUBLIC_KEY,
+      keyLength: typeof env.DISCORD_PUBLIC_KEY === "string"
+        ? env.DISCORD_PUBLIC_KEY.length
+        : null,
+    });
     const verification = await verifyDiscordRequest(request, body, env.DISCORD_PUBLIC_KEY);
     if (!verification.ok) {
       // Diagnostic reason is safe to log; never log keys, signatures, or request bodies.
