@@ -347,6 +347,29 @@ async function syncDiscordEvents(env) {
     }
   }
 }
+
+async function syncConfiguredChannels(env) {
+  const configured = await env.DB.prepare("SELECT category,channel_id FROM channel_sync").all();
+  for (const item of configured.results || []) {
+    const state = await env.DB.prepare("SELECT last_message_id FROM channel_sync_state WHERE category=?").bind(item.category).first();
+    const query = new URLSearchParams({limit:"50"});
+    if (state?.last_message_id) query.set("after",state.last_message_id);
+    const messages = await discordApi(env,`/channels/${item.channel_id}/messages?${query.toString()}`);
+    const ordered = (messages || []).slice().reverse();
+    for (const message of ordered) {
+      if (message.type !== 0 || !message.id) continue;
+      const images = messageImages(message);
+      const six = await nextSixDigitId(env);
+      await env.DB.prepare("INSERT OR IGNORE INTO published_posts(post_id,six_digit_id,category,source_guild_id,source_channel_id,source_message_id,author_discord_id,title,body,image_urls_json) VALUES(?,?,?,?,?,?,?,?,?,?)")
+        .bind(`sync-${item.category}-${message.id}`,six,item.category,env.ALLOWED_GUILD_ID,item.channel_id,message.id,message.author?.id || null,null,cleanText(message.content,4000),JSON.stringify(images)).run();
+    }
+    if (messages?.length) {
+      const newest = messages[0].id;
+      await env.DB.prepare("INSERT INTO channel_sync_state(category,last_message_id) VALUES(?,?) ON CONFLICT(category) DO UPDATE SET last_message_id=excluded.last_message_id,updated_at=CURRENT_TIMESTAMP").bind(item.category,newest).run();
+    }
+  }
+}
+
 async function refreshStatusMessage(env) {
   const saved = await env.DB.prepare("SELECT channel_id,message_id FROM status_message WHERE id=1").first();
   if (!saved?.message_id || !saved?.channel_id) return;
@@ -385,8 +408,12 @@ async function refreshTwitchCreators(env) {
 
 export default {
   async scheduled(controller, env, ctx) {
-    const jobs = [syncDiscordEvents(env), refreshStatusMessage(env), refreshTwitchCreators(env)];
-    ctx.waitUntil(Promise.allSettled(jobs));
+    const minute = new Date(controller.scheduledTime || Date.now()).getUTCMinutes();
+    const jobs = [syncDiscordEvents(env), syncConfiguredChannels(env)];
+    if (minute % 5 === 0) jobs.push(refreshStatusMessage(env), refreshTwitchCreators(env));
+    ctx.waitUntil(Promise.allSettled(jobs).then(results => {
+      for (const result of results) if (result.status === "rejected") console.error("Scheduled job failed:", String(result.reason?.message || result.reason));
+    }));
   },
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -419,6 +446,7 @@ export default {
           updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(minecraft_uuid,stat_id)
         );
         CREATE INDEX IF NOT EXISTS idx_player_statistics_uuid ON player_statistics(minecraft_uuid);
+        CREATE TABLE IF NOT EXISTS channel_sync_state (category TEXT PRIMARY KEY, last_message_id TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
       `);
       return json({ok:true,migrated:["verification_requests","player_statistics"]});
     }
