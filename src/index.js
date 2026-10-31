@@ -87,7 +87,7 @@ async function handle(interaction, env) {
     if (sub === "list") {
       const rows = await env.DB.prepare("SELECT entry_type, discord_id FROM access_entries ORDER BY entry_type, discord_id").all();
       const lines = (rows.results || []).map(r => r.entry_type === "user" ? `User: <@${r.discord_id}>` : `Role: <@&${r.discord_id}>`);
-      return respond(lines.length ? lines.join("\\n") : "No additional access entries are configured.");
+      return respond(lines.length ? lines.join("\n") : "No additional access entries are configured.");
     }
     const target = args[sub]?.target;
     if (!target) return respond("Select a user or role.");
@@ -107,7 +107,7 @@ async function handle(interaction, env) {
       if (args.set) {
         const key = args.set.key;
         const url = args.set.url;
-        if (!["discord", "youtube", "modpack", "bluemap"].includes(key) || !/^https?:\\/\\//i.test(url || "")) return respond("Choose a supported link key and provide a valid http(s) URL.");
+        if (!["discord", "youtube", "modpack", "bluemap"].includes(key) || !/^https?:\/\//i.test(url || "")) return respond("Choose a supported link key and provide a valid http(s) URL.");
         await env.DB.prepare("INSERT INTO website_links(link_key,url,updated_by) VALUES(?,?,?) ON CONFLICT(link_key) DO UPDATE SET url=excluded.url,updated_by=excluded.updated_by,updated_at=CURRENT_TIMESTAMP").bind(key, url, userId).run();
         return respond(`Updated website link: **${key}**.`);
       }
