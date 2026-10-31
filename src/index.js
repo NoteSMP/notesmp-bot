@@ -10,8 +10,10 @@ const encoder = new TextEncoder();
 async function verifyDiscordRequest(request, body, publicKey) {
   const signature = request.headers.get("X-Signature-Ed25519");
   const timestamp = request.headers.get("X-Signature-Timestamp");
-  if (!signature || !timestamp || !publicKey) {
-    return { ok: false, reason: "missing-header-or-public-key" };
+  if (!signature) return { ok: false, reason: "missing-signature-header" };
+  if (!timestamp) return { ok: false, reason: "missing-timestamp-header" };
+  if (typeof publicKey !== "string" || !publicKey.trim()) {
+    return { ok: false, reason: "public-key-secret-missing-or-empty" };
   }
 
   // Reject stale requests to reduce replay risk.
