@@ -508,7 +508,7 @@ export default {
       const uuidHex = String(payload.uuid || "").replace(/-/g,"").toLowerCase();
       const uuid = uuidHex.replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
       const username = cleanText(payload.username,16);
-      if (!/^[0-9a-f]{32}$/.test(uuid) || !/^[A-Za-z0-9_]{3,16}$/.test(username)) return json({error:"Invalid player identity"},400);
+      if (uuidHex.length !== 32 || !/^[0-9a-f]+$/.test(uuidHex) || !/^[A-Za-z0-9_]{3,16}$/.test(username)) return json({error:"Invalid player identity"},400);
       const base = payload.baseStats || {};
       const number = key => Number.isFinite(Number(base[key])) && Number(base[key]) >= 0 ? Number(base[key]) : 0;
       await env.DB.prepare(`INSERT INTO players(uuid,username,first_join,last_seen,playtime_seconds,blocks_broken,blocks_placed,deaths,kills,updated_at)
