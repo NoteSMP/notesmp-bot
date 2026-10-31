@@ -52,10 +52,7 @@ const REGISTERED_COMMANDS = [
   { name: "playerstats", description: "View public Minecraft player statistics", options: [
     { type: 3, name: "playername", description: "Minecraft username", required: false },
     { type: 6, name: "discord_user", description: "Linked Discord account", required: false },
-    { type: 3, name: "stat", description: "Optional individual statistic", required: false, choices: [
-      { name: "Playtime (seconds)", value: "playtime_seconds" }, { name: "Blocks broken", value: "blocks_broken" },
-      { name: "Blocks placed", value: "blocks_placed" }, { name: "Deaths", value: "deaths" }, { name: "Kills", value: "kills" }
-    ] }
+    { type: 3, name: "stat", description: "Minecraft statistic ID, e.g. minecraft:mob_kills", required: false }
   ] },
   { name: "serverstatus", description: "Manage the live Discord server status message", options: [
     { type: 1, name: "sendmessage", description: "Create or replace the status message", options: [{ type: 7, name: "channel", description: "Channel for the status embed", required: true }] }
@@ -294,7 +291,7 @@ async function handle(interaction, env) {
     const status = await getServerSnapshot(env);
     const sent = await discordApi(env,`/channels/${channelId}/messages`,{method:"POST",body:JSON.stringify({embeds:[serverEmbed(status)]})});
     await env.DB.prepare("INSERT INTO status_message(id,channel_id,message_id) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET channel_id=excluded.channel_id,message_id=excluded.message_id,updated_at=CURRENT_TIMESTAMP").bind(channelId,sent.id).run();
-    return respond(`Server status embed created in <#${channelId}>. Automatic refresh requires the scheduled Worker trigger.`);
+    return respond(`Server status embed created in <#${channelId}>. The Worker will refresh it automatically when its cron trigger is enabled.`);
   }
 
   if (["link", "sync", "unsync"].includes(command)) {
@@ -395,7 +392,7 @@ export default {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/") return json({ ok: true, service: "notesmp-discord-worker" });
 
-    const setupPath = url.pathname === "/setup" || url.pathname === "/setup/register-commands";
+    const setupPath = url.pathname === "/setup" || url.pathname === "/setup/register-commands" || url.pathname === "/setup/migrate";
     if (request.method === "OPTIONS" && setupPath) {
       return new Response(null, { status: 204, headers: {
         "Access-Control-Allow-Origin": "https://hoppscotch.io",
@@ -406,7 +403,27 @@ export default {
       }});
     }
 
-    if (request.method === "POST" && setupPath) {
+
+    if (request.method === "POST" && url.pathname === "/setup/migrate") {
+      const secret = env.COMMAND_SETUP_SECRET;
+      const authorization = request.headers.get("Authorization") || "";
+      if (!secret || (authorization !== secret && authorization !== `Bearer ${secret}`)) return json({error:"Unauthorized"},401);
+      await env.DB.exec(`
+        CREATE TABLE IF NOT EXISTS verification_requests (
+          code TEXT PRIMARY KEY, discord_user_id TEXT NOT NULL UNIQUE, minecraft_name TEXT NOT NULL,
+          expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_verification_requests_expiry ON verification_requests(expires_at);
+        CREATE TABLE IF NOT EXISTS player_statistics (
+          minecraft_uuid TEXT NOT NULL, stat_id TEXT NOT NULL, stat_value REAL NOT NULL DEFAULT 0,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(minecraft_uuid,stat_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_player_statistics_uuid ON player_statistics(minecraft_uuid);
+      `);
+      return json({ok:true,migrated:["verification_requests","player_statistics"]});
+    }
+
+    if (request.method === "POST" && setupPath && url.pathname !== "/setup/migrate") {
       const setupSecret = env.COMMAND_SETUP_SECRET;
       const authorization = request.headers.get("Authorization") || "";
       if (!setupSecret || (authorization !== setupSecret && authorization !== `Bearer ${setupSecret}`)) return json({ error: "Unauthorized" }, 401);
