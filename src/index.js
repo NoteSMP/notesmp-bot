@@ -518,12 +518,11 @@ export default {
         deaths=excluded.deaths,kills=excluded.kills,updated_at=CURRENT_TIMESTAMP`)
         .bind(uuid,username,typeof payload.firstJoin==="string"?payload.firstJoin:null,typeof payload.lastSeen==="string"?payload.lastSeen:null,
           number("playtime_seconds"),number("blocks_broken"),number("blocks_placed"),number("deaths"),number("kills")).run();
-      const stats = payload.statistics && typeof payload.statistics === "object" ? Object.entries(payload.statistics).slice(0,500) : [];
-      for (const [statId,value] of stats) {
-        if (!/^[a-z0-9_.:-]{1,100}$/i.test(statId) || !Number.isFinite(Number(value)) || Number(value)<0) continue;
-        await env.DB.prepare("INSERT INTO player_statistics(minecraft_uuid,stat_id,stat_value) VALUES(?,?,?) ON CONFLICT(minecraft_uuid,stat_id) DO UPDATE SET stat_value=excluded.stat_value,updated_at=CURRENT_TIMESTAMP")
-          .bind(uuid,statId,Number(value)).run();
-      }
+      const stats = payload.statistics && typeof payload.statistics === "object"
+        ? Object.entries(payload.statistics).filter(([statId,value]) => /^[a-z0-9_.:-]{1,100}$/i.test(statId) && Number.isFinite(Number(value)) && Number(value) >= 0).slice(0,2000)
+        : [];
+      const statements = stats.map(([statId,value]) => env.DB.prepare("INSERT INTO player_statistics(minecraft_uuid,stat_id,stat_value) VALUES(?,?,?) ON CONFLICT(minecraft_uuid,stat_id) DO UPDATE SET stat_value=excluded.stat_value,updated_at=CURRENT_TIMESTAMP").bind(uuid,statId,Number(value)));
+      for (let i = 0; i < statements.length; i += 100) await env.DB.batch(statements.slice(i,i+100));
       return json({ok:true,statsStored:stats.length});
     }
 
