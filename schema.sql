@@ -1,0 +1,12 @@
+-- NoteSMP bot state, stored in the existing notesmp-data D1 database.
+CREATE TABLE IF NOT EXISTS bot_config (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS access_entries (entry_type TEXT NOT NULL CHECK (entry_type IN ('user','role')), discord_id TEXT NOT NULL, added_by TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(entry_type, discord_id));
+CREATE TABLE IF NOT EXISTS published_posts (post_id TEXT PRIMARY KEY, six_digit_id TEXT NOT NULL UNIQUE, category TEXT NOT NULL, group_name TEXT, source_guild_id TEXT NOT NULL, source_channel_id TEXT NOT NULL, source_message_id TEXT NOT NULL, author_discord_id TEXT, linked_minecraft_uuid TEXT, linked_minecraft_name TEXT, title TEXT, subtitle TEXT, body TEXT NOT NULL DEFAULT '', image_urls_json TEXT NOT NULL DEFAULT '[]', event_data_json TEXT, published_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(source_guild_id, source_channel_id, source_message_id, category));
+CREATE INDEX IF NOT EXISTS idx_posts_category_date ON published_posts(category, published_at DESC);
+CREATE TABLE IF NOT EXISTS channel_sync (category TEXT PRIMARY KEY CHECK(category IN ('rules','updates')), channel_id TEXT NOT NULL, configured_by TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS website_links (link_key TEXT PRIMARY KEY CHECK(link_key IN ('discord','youtube','modpack','bluemap')), url TEXT NOT NULL, updated_by TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS verification_codes (code TEXT PRIMARY KEY, discord_user_id TEXT NOT NULL UNIQUE, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_verification_expiry ON verification_codes(expires_at);
+CREATE TABLE IF NOT EXISTS account_links (discord_user_id TEXT PRIMARY KEY UNIQUE, minecraft_uuid TEXT NOT NULL UNIQUE, minecraft_name TEXT NOT NULL, linked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS creators (twitch_login TEXT PRIMARY KEY, added_by TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, last_checked_at TEXT, live_started_at TEXT, live_title TEXT, live_url TEXT, live_thumbnail_url TEXT);
+CREATE TABLE IF NOT EXISTS status_message (id INTEGER PRIMARY KEY CHECK(id=1), channel_id TEXT NOT NULL, message_id TEXT, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
