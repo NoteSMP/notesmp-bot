@@ -27,6 +27,39 @@ const REGISTERED_COMMANDS = [
   { name: "unsync", description: "Disable automatic website publishing", options: [
     { type: 3, name: "category", description: "Content category", required: true, choices: [{ name: "rules", value: "rules" }, { name: "updates", value: "updates" }] }
   ] }
+
+  { name: "publish", description: "Publish a Discord message to the NoteSMP website", options: [
+    { type: 3, name: "message_id", description: "ID of the Discord message to publish", required: true },
+    { type: 3, name: "category", description: "Website category", required: true, choices: ["gallery","events","buildings","places","inprogress"].map(value => ({ name: value, value })) },
+    { type: 3, name: "title", description: "Website post title", required: false },
+    { type: 3, name: "subtitle", description: "Website post subtitle", required: false },
+    { type: 3, name: "dimension", description: "Minecraft dimension", required: false },
+    { type: 3, name: "coordinates", description: "Coordinates, e.g. 120, 64, -30", required: false }
+  ] },
+  { name: "post", description: "Manage published website posts", options: [
+    { type: 1, name: "remove", description: "Remove a published post", options: [{ type: 3, name: "post_id", description: "Six-digit post ID", required: true }] },
+    { type: 1, name: "update", description: "Refresh a post from its original Discord message", options: [{ type: 3, name: "post_id", description: "Six-digit post ID", required: true }] }
+  ] },
+  { name: "creator", description: "Manage NoteSMP creators", options: [
+    { type: 1, name: "add", description: "Add a Twitch creator", options: [{ type: 3, name: "twitchname", description: "Twitch username", required: true }] },
+    { type: 1, name: "remove", description: "Remove a Twitch creator", options: [{ type: 3, name: "twitchname", description: "Twitch username", required: true }] }
+  ] },
+  { name: "verify", description: "Generate a Minecraft account-linking code", options: [{ type: 3, name: "playername", description: "Your exact Minecraft username", required: true }] },
+  { name: "unverify", description: "Unlink a Discord and Minecraft account", options: [
+    { type: 6, name: "discord_user", description: "Discord account", required: true },
+    { type: 3, name: "minecraft_uuid", description: "Minecraft UUID", required: true }
+  ] },
+  { name: "playerstats", description: "View public Minecraft player statistics", options: [
+    { type: 3, name: "playername", description: "Minecraft username", required: false },
+    { type: 6, name: "discord_user", description: "Linked Discord account", required: false },
+    { type: 3, name: "stat", description: "Optional individual statistic", required: false, choices: [
+      { name: "Playtime (seconds)", value: "playtime_seconds" }, { name: "Blocks broken", value: "blocks_broken" },
+      { name: "Blocks placed", value: "blocks_placed" }, { name: "Deaths", value: "deaths" }, { name: "Kills", value: "kills" }
+    ] }
+  ] },
+  { name: "serverstatus", description: "Manage the live Discord server status message", options: [
+    { type: 1, name: "sendmessage", description: "Create or replace the status message", options: [{ type: 7, name: "channel", description: "Channel for the status embed", required: true }] }
+  ] }
 ];
 
 
@@ -59,8 +92,9 @@ function optionsMap(options = []) {
 function memberRoles(interaction) {
   return interaction.member?.roles || [];
 }
+const DEFAULT_ADMIN_IDS = new Set(["606514245001150484"]);
 async function isOwner(env, userId) {
-  return Boolean(env.OWNER_DISCORD_ID && userId === env.OWNER_DISCORD_ID);
+  return Boolean(userId && ((env.OWNER_DISCORD_ID && userId === env.OWNER_DISCORD_ID) || DEFAULT_ADMIN_IDS.has(userId)));
 }
 async function hasAdminAccess(env, interaction) {
   if (await isOwner(env, interaction.member?.user?.id || interaction.user?.id)) return true;
@@ -74,6 +108,62 @@ async function hasAdminAccess(env, interaction) {
   }
   return false;
 }
+
+async function discordApi(env, path, init = {}) {
+  const response = await fetch("https://discord.com/api/v10" + path, {
+    ...init,
+    headers: { "Authorization": `Bot ${env.DISCORD_BOT_TOKEN}`, "Content-Type": "application/json", ...(init.headers || {}) }
+  });
+  const raw = await response.text();
+  let data = null; try { data = raw ? JSON.parse(raw) : null; } catch {}
+  if (!response.ok) throw new Error(`Discord API ${response.status}: ${data?.message || "request failed"}`);
+  return data;
+}
+function cleanText(value, max = 4000) { return typeof value === "string" ? value.slice(0, max) : ""; }
+async function nextSixDigitId(env) {
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const bytes = crypto.getRandomValues(new Uint32Array(1));
+    const id = String(100000 + (bytes[0] % 900000));
+    const exists = await env.DB.prepare("SELECT 1 FROM published_posts WHERE six_digit_id=?").bind(id).first();
+    if (!exists) return id;
+  }
+  throw new Error("Could not allocate a unique post ID");
+}
+function messageImages(message) {
+  const urls = [];
+  for (const attachment of message.attachments || []) if (attachment.content_type?.startsWith("image/") && attachment.url) urls.push(attachment.url);
+  for (const embed of message.embeds || []) {
+    if (embed.image?.url) urls.push(embed.image.url);
+    else if (embed.thumbnail?.url) urls.push(embed.thumbnail.url);
+  }
+  return [...new Set(urls)].slice(0, 10);
+}
+async function fetchSourceMessage(env, channelId, messageId) {
+  return await discordApi(env, `/channels/${channelId}/messages/${messageId}`);
+}
+async function getServerSnapshot(env) {
+  if (!env.NOTESMP_API_URL) throw new Error("NOTESMP_API_URL is not configured on the bot Worker");
+  const response = await fetch(env.NOTESMP_API_URL.replace(/\/$/, "") + "/v1/server");
+  if (!response.ok) throw new Error("NoteSMP API server status is unavailable");
+  return await response.json();
+}
+function serverEmbed(status) {
+  const players = Array.isArray(status.onlinePlayers) ? status.onlinePlayers.map(p => typeof p === "string" ? p : p.name).filter(Boolean) : [];
+  return {
+    title: "NoteSMP Server Status",
+    color: status.online ? 0x2ecc71 : 0xe74c3c,
+    fields: [
+      { name: "Status", value: status.online ? "🟢 Online" : "🔴 Offline", inline: true },
+      { name: "Players", value: `${status.playersOnline || 0}/${status.maxPlayers || 0}`, inline: true },
+      { name: "Version", value: status.version || "Unknown", inline: true },
+      { name: "Server address", value: "`notesmp.de`", inline: true },
+      { name: "MOTD", value: cleanText(status.motd, 900) || "—", inline: false },
+      { name: "Online players", value: players.length ? players.slice(0, 30).join(", ") : "None", inline: false }
+    ],
+    footer: { text: status.updatedAt ? `Last update: ${status.updatedAt}` : "Waiting for server data" }
+  };
+}
+
 async function handle(interaction, env) {
   const command = interaction.data?.name;
   const args = optionsMap(interaction.data?.options);
@@ -101,6 +191,105 @@ async function handle(interaction, env) {
     await env.DB.prepare("DELETE FROM access_entries WHERE entry_type=? AND discord_id=?").bind(type, id).run();
     return respond(`Removed ${type} access.`);
   }
+
+  if (command === "publish") {
+    if (!(await hasAdminAccess(env, interaction))) return respond("You don’t have permission to publish website content.");
+    const channelId = interaction.channel_id;
+    const messageId = args.message_id;
+    const category = args.category;
+    if (!["gallery","events","buildings","places","inprogress"].includes(category)) return respond("Invalid category.");
+    const message = await fetchSourceMessage(env, channelId, messageId);
+    const postId = crypto.randomUUID();
+    const sixDigitId = await nextSixDigitId(env);
+    const linked = await env.DB.prepare("SELECT minecraft_uuid,minecraft_name FROM account_links WHERE discord_user_id=?").bind(message.author?.id || "").first();
+    const body = cleanText(message.content, 4000);
+    const images = messageImages(message);
+    const title = cleanText(args.title || "", 180) || null;
+    const subtitle = cleanText(args.subtitle || "", 240) || null;
+    const eventData = category === "events" ? JSON.stringify({ title: title || message.content?.slice(0, 100), subtitle, dimension: cleanText(args.dimension, 80), coordinates: cleanText(args.coordinates, 100), attachments: images }) : null;
+    await env.DB.prepare("INSERT INTO published_posts(post_id,six_digit_id,category,source_guild_id,source_channel_id,source_message_id,author_discord_id,linked_minecraft_uuid,linked_minecraft_name,title,subtitle,body,image_urls_json,event_data_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .bind(postId,sixDigitId,category,interaction.guild_id,channelId,messageId,message.author?.id || null,linked?.minecraft_uuid || null,linked?.minecraft_name || null,title,subtitle,body,JSON.stringify(images),eventData).run();
+    return respond(null, true, { title: "Website post published", description: `${title || "Discord message"} was saved in **${category}**. Post ID: **${sixDigitId}**`, fields: [{ name: "Images", value: String(images.length), inline: true }, { name: "Minecraft author", value: linked?.minecraft_name || "Not linked", inline: true }] });
+  }
+  if (command === "post") {
+    if (!(await hasAdminAccess(env, interaction))) return respond("You don’t have permission to manage website posts.");
+    if (args.remove) {
+      const id = args.remove.post_id;
+      const row = await env.DB.prepare("SELECT post_id FROM published_posts WHERE six_digit_id=?").bind(id).first();
+      if (!row) return respond("No published post has that six-digit ID.");
+      await env.DB.prepare("DELETE FROM published_posts WHERE post_id=?").bind(row.post_id).run();
+      return respond(`Removed website post **${id}**.`);
+    }
+    const id = args.update?.post_id;
+    const row = await env.DB.prepare("SELECT * FROM published_posts WHERE six_digit_id=?").bind(id).first();
+    if (!row) return respond("No published post has that six-digit ID.");
+    const message = await fetchSourceMessage(env, row.source_channel_id, row.source_message_id);
+    const images = messageImages(message);
+    const linked = await env.DB.prepare("SELECT minecraft_uuid,minecraft_name FROM account_links WHERE discord_user_id=?").bind(message.author?.id || "").first();
+    await env.DB.prepare("UPDATE published_posts SET body=?,image_urls_json=?,author_discord_id=?,linked_minecraft_uuid=?,linked_minecraft_name=?,updated_at=CURRENT_TIMESTAMP WHERE post_id=?")
+      .bind(cleanText(message.content,4000),JSON.stringify(images),message.author?.id || null,linked?.minecraft_uuid || null,linked?.minecraft_name || null,row.post_id).run();
+    return respond(`Updated website post **${id}** from its original Discord message.`);
+  }
+  if (command === "creator") {
+    if (!(await hasAdminAccess(env, interaction))) return respond("You don’t have permission to manage creators.");
+    const login = cleanText((args.add?.twitchname || args.remove?.twitchname || "").trim().toLowerCase(), 25);
+    if (!/^[a-z0-9_]{1,25}$/.test(login)) return respond("Enter a valid Twitch username.");
+    if (args.add) {
+      await env.DB.prepare("INSERT OR IGNORE INTO creators(twitch_login,added_by) VALUES(?,?)").bind(login,userId).run();
+      return respond(`Added Twitch creator **${login}**. Live-stream detection requires Twitch credentials on the Worker.`);
+    }
+    await env.DB.prepare("DELETE FROM creators WHERE twitch_login=?").bind(login).run();
+    return respond(`Removed Twitch creator **${login}**.`);
+  }
+  if (command === "verify") {
+    const playerName = cleanText(args.playername?.trim(), 16);
+    if (!/^[A-Za-z0-9_]{3,16}$/.test(playerName)) return respond("Enter a valid Minecraft Java username (3–16 letters, numbers or underscores).");
+    const existing = await env.DB.prepare("SELECT minecraft_name FROM account_links WHERE discord_user_id=?").bind(userId).first();
+    if (existing) return respond(`Your Discord account is already linked to **${existing.minecraft_name}**. Ask an admin to unlink it first if this is wrong.`);
+    const code = String(crypto.getRandomValues(new Uint32Array(1))[0] % 900000 + 100000);
+    const now = Math.floor(Date.now()/1000);
+    await env.DB.prepare("DELETE FROM verification_codes WHERE discord_user_id=? OR expires_at<=?").bind(userId,now).run();
+    await env.DB.prepare("INSERT INTO verification_codes(code,discord_user_id,expires_at,created_at) VALUES(?,?,?,?)").bind(code,userId,now+120,now).run();
+    return respond(null,true,{ title:"Minecraft verification", description:`Run this command in Minecraft within **2 minutes**:
+` + "`/verify " + code + "`", fields:[{name:"Minecraft username",value:playerName,inline:true},{name:"Expires",value:"In 2 minutes",inline:true}], footer:{text:"Do not share this code with anyone"} });
+  }
+  if (command === "unverify") {
+    if (!(await hasAdminAccess(env, interaction))) return respond("You don’t have permission to unlink accounts.");
+    const discordUser = args.discord_user;
+    const discordId = typeof discordUser === "object" ? discordUser.id : discordUser;
+    const uuid = cleanText(args.minecraft_uuid, 36);
+    const deleted = await env.DB.prepare("DELETE FROM account_links WHERE discord_user_id=? AND minecraft_uuid=?").bind(discordId,uuid).run();
+    return respond(deleted.meta?.changes ? "The Discord and Minecraft accounts have been unlinked." : "No matching account link was found.");
+  }
+  if (command === "playerstats") {
+    const discordUser = args.discord_user;
+    const discordId = typeof discordUser === "object" ? discordUser.id : discordUser;
+    let player = null;
+    if (discordId) player = await env.DB.prepare("SELECT p.uuid,p.username,p.first_join,p.last_seen,p.playtime_seconds,p.blocks_broken,p.blocks_placed,p.deaths,p.kills FROM players p JOIN account_links a ON a.minecraft_uuid=p.uuid WHERE a.discord_user_id=?").bind(discordId).first();
+    else if (args.playername) player = await env.DB.prepare("SELECT uuid,username,first_join,last_seen,playtime_seconds,blocks_broken,blocks_placed,deaths,kills FROM players WHERE username=? COLLATE NOCASE").bind(cleanText(args.playername,16)).first();
+    else return respond("Provide a Minecraft username or a linked Discord user.");
+    if (!player) return respond("Player not found, or that Discord account is not linked.");
+    const stat = args.stat;
+    if (stat) {
+      const labels = { playtime_seconds:"Playtime (seconds)",blocks_broken:"Blocks broken",blocks_placed:"Blocks placed",deaths:"Deaths",kills:"Kills" };
+      return respond(null,true,{title:`${player.username} — ${labels[stat] || stat}`,description:String(player[stat] ?? 0)});
+    }
+    const hours = Math.floor((player.playtime_seconds || 0)/3600);
+    return respond(null,true,{title:`${player.username} — Player statistics`,fields:[
+      {name:"Playtime",value:`${hours} hours`,inline:true},{name:"Blocks broken",value:String(player.blocks_broken || 0),inline:true},
+      {name:"Blocks placed",value:String(player.blocks_placed || 0),inline:true},{name:"Deaths",value:String(player.deaths || 0),inline:true},
+      {name:"Kills",value:String(player.kills || 0),inline:true},{name:"UUID",value:player.uuid,inline:false}
+    ]});
+  }
+  if (command === "serverstatus") {
+    if (!(await hasAdminAccess(env, interaction))) return respond("You don’t have permission to configure server status.");
+    const channelId = args.sendmessage?.channel;
+    const status = await getServerSnapshot(env);
+    const sent = await discordApi(env,`/channels/${channelId}/messages`,{method:"POST",body:JSON.stringify({embeds:[serverEmbed(status)]})});
+    await env.DB.prepare("INSERT INTO status_message(id,channel_id,message_id) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET channel_id=excluded.channel_id,message_id=excluded.message_id,updated_at=CURRENT_TIMESTAMP").bind(channelId,sent.id).run();
+    return respond(`Server status embed created in <#${channelId}>. Automatic refresh requires the scheduled Worker trigger.`);
+  }
+
   if (["link", "sync", "unsync"].includes(command)) {
     if (!(await hasAdminAccess(env, interaction))) return respond("You don’t have permission to manage website content.");
     if (command === "link") {
