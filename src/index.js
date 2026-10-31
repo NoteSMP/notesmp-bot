@@ -65,8 +65,9 @@ async function handle(interaction, env) {
     }
     const target = args[sub]?.target;
     if (!target) return respond("Select a user or role.");
-    const type = target?.role ? "role" : "user";
     const id = target?.id || target;
+    const resolved = interaction.data?.resolved || {};
+    const type = target?.role || resolved.roles?.[id] ? "role" : "user";
     if (sub === "add") {
       await env.DB.prepare("INSERT OR IGNORE INTO access_entries(entry_type,discord_id,added_by) VALUES(?,?,?)").bind(type, id, userId).run();
       return respond(`Added ${type} access for ${type === "role" ? `<@&${id}>` : `<@${id}>`}.`);
