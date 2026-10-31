@@ -4,6 +4,32 @@
  */
 const encoder = new TextEncoder();
 
+const REGISTERED_COMMANDS = [
+  { name: "help", description: "Show NoteSMP bot help" },
+  { name: "access", description: "Manage authorized website administrators", options: [
+    { type: 1, name: "add", description: "Grant access to a Discord user or role", options: [{ type: 9, name: "target", description: "User or role to authorize", required: true }] },
+    { type: 1, name: "remove", description: "Remove access from a Discord user or role", options: [{ type: 9, name: "target", description: "User or role to remove", required: true }] },
+    { type: 1, name: "list", description: "List authorized users and roles" }
+  ] },
+  { name: "link", description: "Manage website links", options: [
+    { type: 1, name: "set", description: "Set a website link", options: [
+      { type: 3, name: "key", description: "Which link", required: true, choices: ["discord","youtube","modpack","bluemap"].map(value => ({ name: value, value })) },
+      { type: 3, name: "url", description: "Full http(s) URL", required: true }
+    ] },
+    { type: 1, name: "unset", description: "Remove a website link", options: [
+      { type: 3, name: "key", description: "Which link", required: true, choices: ["discord","youtube","modpack","bluemap"].map(value => ({ name: value, value })) }
+    ] }
+  ] },
+  { name: "sync", description: "Enable automatic website publishing from a channel", options: [
+    { type: 3, name: "category", description: "Content category", required: true, choices: [{ name: "rules", value: "rules" }, { name: "updates", value: "updates" }] },
+    { type: 7, name: "channel", description: "Discord source channel", required: true }
+  ] },
+  { name: "unsync", description: "Disable automatic website publishing", options: [
+    { type: 3, name: "category", description: "Content category", required: true, choices: [{ name: "rules", value: "rules" }, { name: "updates", value: "updates" }] }
+  ] }
+];
+
+
 async function verifyDiscordRequest(request, body, publicKey) {
   const signature = request.headers.get("X-Signature-Ed25519");
   const timestamp = request.headers.get("X-Signature-Timestamp");
@@ -108,6 +134,27 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/") return json({ ok: true, service: "notesmp-discord-worker" });
+
+    if (request.method === "POST" && url.pathname === "/setup/register-commands") {
+      const setupSecret = env.COMMAND_SETUP_SECRET;
+      const authorization = request.headers.get("Authorization") || "";
+      if (!setupSecret || authorization !== `Bearer ${setupSecret}`) return json({ error: "Unauthorized" }, 401);
+      if (!env.DISCORD_BOT_TOKEN || !env.DISCORD_APPLICATION_ID || !env.ALLOWED_GUILD_ID) {
+        return json({ error: "Missing required Worker bindings: DISCORD_BOT_TOKEN, DISCORD_APPLICATION_ID, ALLOWED_GUILD_ID" }, 500);
+      }
+      const discordResponse = await fetch(`https://discord.com/api/v10/applications/${env.DISCORD_APPLICATION_ID}/guilds/${env.ALLOWED_GUILD_ID}/commands`, {
+        method: "PUT",
+        headers: { "Authorization": `Bot ${env.DISCORD_BOT_TOKEN}`, "Content-Type": "application/json" },
+        body: JSON.stringify(REGISTERED_COMMANDS)
+      });
+      if (!discordResponse.ok) {
+        console.error("Command registration rejected by Discord:", discordResponse.status);
+        return json({ error: "Discord rejected command registration", status: discordResponse.status }, 502);
+      }
+      const registered = await discordResponse.json();
+      return json({ ok: true, registered: registered.length });
+    }
+
     if (request.method !== "POST" || url.pathname !== "/interactions") return json({ error: "Not found" }, 404);
     const body = await request.text();
     if (!(await verifyDiscordRequest(request, body, env.DISCORD_PUBLIC_KEY))) return json({ error: "Invalid request signature" }, 401);
