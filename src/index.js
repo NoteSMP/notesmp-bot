@@ -7,10 +7,6 @@
  */
 const encoder = new TextEncoder();
 
-function hex(buffer) {
-  return [...new Uint8Array(buffer)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 async function verifyDiscordRequest(request, body, publicKey) {
   const signature = request.headers.get("X-Signature-Ed25519");
   const timestamp = request.headers.get("X-Signature-Timestamp");
