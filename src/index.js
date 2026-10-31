@@ -71,7 +71,10 @@ export default {
     }
 
     const body = await request.text();
-    if (!(await verifyDiscordRequest(request, body, env.DISCORD_PUBLIC_KEY))) {
+    const verification = await verifyDiscordRequest(request, body, env.DISCORD_PUBLIC_KEY);
+    if (!verification.ok) {
+      // Diagnostic reason is safe to log; never log keys, signatures, or request bodies.
+      console.warn("Discord signature verification failed:", verification.reason, verification.detail || "");
       return json({ error: "Invalid request signature" }, 401);
     }
 
