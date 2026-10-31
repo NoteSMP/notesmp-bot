@@ -455,7 +455,15 @@ export default {
         );
         CREATE TABLE IF NOT EXISTS channel_sync_state (category TEXT PRIMARY KEY, last_message_id TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
       `);
-      return json({ok:true,migrated:["verification_requests","player_statistics","channel_sync","channel_sync_state"]});
+      return new Response(JSON.stringify({ok:true,migrated:["verification_requests","player_statistics","channel_sync","channel_sync_state"]}), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "https://hoppscotch.io",
+          "Vary": "Origin"
+        }
+      });
     }
 
     if (request.method === "POST" && setupPath && url.pathname !== "/setup/migrate") {
