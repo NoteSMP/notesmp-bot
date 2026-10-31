@@ -30,7 +30,7 @@ const REGISTERED_COMMANDS = [
 
   { name: "publish", description: "Publish a Discord message to the NoteSMP website", options: [
     { type: 3, name: "message_id", description: "ID of the Discord message to publish", required: true },
-    { type: 3, name: "category", description: "Website category", required: true, choices: ["gallery","events","buildings","places","inprogress"].map(value => ({ name: value, value })) },
+    { type: 3, name: "gallery_category", description: "Gallery section", required: true, choices: ["events","buildings","places","inprogress"].map(value => ({ name: value, value })) },
     { type: 3, name: "title", description: "Website post title", required: false },
     { type: 3, name: "subtitle", description: "Website post subtitle", required: false },
     { type: 3, name: "dimension", description: "Minecraft dimension", required: false },
@@ -193,8 +193,9 @@ async function handle(interaction, env) {
     if (!(await hasAdminAccess(env, interaction))) return respond("You don’t have permission to publish website content.");
     const channelId = interaction.channel_id;
     const messageId = args.message_id;
-    const category = args.category;
-    if (!["gallery","events","buildings","places","inprogress"].includes(category)) return respond("Invalid category.");
+    const group = args.gallery_category;
+    const category = "gallery";
+    if (!["events","buildings","places","inprogress"].includes(group)) return respond("Invalid gallery section.");
     const message = await fetchSourceMessage(env, channelId, messageId);
     const postId = crypto.randomUUID();
     const sixDigitId = await nextSixDigitId(env);
@@ -203,10 +204,10 @@ async function handle(interaction, env) {
     const images = messageImages(message);
     const title = cleanText(args.title || "", 180) || null;
     const subtitle = cleanText(args.subtitle || "", 240) || null;
-    const eventData = category === "events" ? JSON.stringify({ title: title || message.content?.slice(0, 100), subtitle, dimension: cleanText(args.dimension, 80), coordinates: cleanText(args.coordinates, 100), attachments: images }) : null;
-    await env.DB.prepare("INSERT INTO published_posts(post_id,six_digit_id,category,source_guild_id,source_channel_id,source_message_id,author_discord_id,linked_minecraft_uuid,linked_minecraft_name,title,subtitle,body,image_urls_json,event_data_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-      .bind(postId,sixDigitId,category,interaction.guild_id,channelId,messageId,message.author?.id || null,linked?.minecraft_uuid || null,linked?.minecraft_name || null,title,subtitle,body,JSON.stringify(images),eventData).run();
-    return respond(null, true, { title: "Website post published", description: `${title || "Discord message"} was saved in **${category}**. Post ID: **${sixDigitId}**`, fields: [{ name: "Images", value: String(images.length), inline: true }, { name: "Minecraft author", value: linked?.minecraft_name || "Not linked", inline: true }] });
+    const eventData = JSON.stringify({ galleryGroup: group, dimension: cleanText(args.dimension, 80), coordinates: cleanText(args.coordinates, 100) });
+    await env.DB.prepare("INSERT INTO published_posts(post_id,six_digit_id,category,group_name,source_guild_id,source_channel_id,source_message_id,author_discord_id,linked_minecraft_uuid,linked_minecraft_name,title,subtitle,body,image_urls_json,event_data_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .bind(postId,sixDigitId,category,group,interaction.guild_id,channelId,messageId,message.author?.id || null,linked?.minecraft_uuid || null,linked?.minecraft_name || null,title,subtitle,body,JSON.stringify(images),eventData).run();
+    return respond(null, true, { title: "Website post published", description: `${title || "Discord message"} was saved in **Gallery / ${group}**. Post ID: **${sixDigitId}**`, fields: [{ name: "Images", value: String(images.length), inline: true }, { name: "Minecraft author", value: linked?.minecraft_name || "Not linked", inline: true }] });
   }
   if (command === "post") {
     if (!(await hasAdminAccess(env, interaction))) return respond("You don’t have permission to manage website posts.");
