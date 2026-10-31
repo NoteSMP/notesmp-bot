@@ -10,3 +10,23 @@ CREATE INDEX IF NOT EXISTS idx_verification_expiry ON verification_codes(expires
 CREATE TABLE IF NOT EXISTS account_links (discord_user_id TEXT PRIMARY KEY UNIQUE, minecraft_uuid TEXT NOT NULL UNIQUE, minecraft_name TEXT NOT NULL, linked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS creators (twitch_login TEXT PRIMARY KEY, added_by TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, last_checked_at TEXT, live_started_at TEXT, live_title TEXT, live_url TEXT, live_thumbnail_url TEXT);
 CREATE TABLE IF NOT EXISTS status_message (id INTEGER PRIMARY KEY CHECK(id=1), channel_id TEXT NOT NULL, message_id TEXT, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+
+-- Stores the expected Minecraft name alongside the short-lived Discord verification code.
+CREATE TABLE IF NOT EXISTS verification_requests (
+  code TEXT PRIMARY KEY,
+  discord_user_id TEXT NOT NULL UNIQUE,
+  minecraft_name TEXT NOT NULL,
+  expires_at INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_verification_requests_expiry ON verification_requests(expires_at);
+
+-- Detailed Minecraft statistics can be ingested by the Paper plugin without limiting stat IDs.
+CREATE TABLE IF NOT EXISTS player_statistics (
+  minecraft_uuid TEXT NOT NULL,
+  stat_id TEXT NOT NULL,
+  stat_value REAL NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (minecraft_uuid, stat_id)
+);
+CREATE INDEX IF NOT EXISTS idx_player_statistics_uuid ON player_statistics(minecraft_uuid);
