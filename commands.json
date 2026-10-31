@@ -1,0 +1,167 @@
+[
+  {
+    "name": "help",
+    "description": "Show NoteSMP bot help"
+  },
+  {
+    "name": "access",
+    "description": "Manage authorized website administrators",
+    "options": [
+      {
+        "type": 1,
+        "name": "add",
+        "description": "Grant access to a Discord user or role",
+        "options": [
+          {
+            "type": 9,
+            "name": "target",
+            "description": "User or role to authorize",
+            "required": true
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "name": "remove",
+        "description": "Remove access from a Discord user or role",
+        "options": [
+          {
+            "type": 9,
+            "name": "target",
+            "description": "User or role to remove",
+            "required": true
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "name": "list",
+        "description": "List authorized users and roles"
+      }
+    ]
+  },
+  {
+    "name": "link",
+    "description": "Manage website links",
+    "options": [
+      {
+        "type": 1,
+        "name": "set",
+        "description": "Set a website link",
+        "options": [
+          {
+            "type": 3,
+            "name": "key",
+            "description": "Which link",
+            "required": true,
+            "choices": [
+              {
+                "name": "discord",
+                "value": "discord"
+              },
+              {
+                "name": "youtube",
+                "value": "youtube"
+              },
+              {
+                "name": "modpack",
+                "value": "modpack"
+              },
+              {
+                "name": "bluemap",
+                "value": "bluemap"
+              }
+            ]
+          },
+          {
+            "type": 3,
+            "name": "url",
+            "description": "Full http(s) URL",
+            "required": true
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "name": "unset",
+        "description": "Remove a website link",
+        "options": [
+          {
+            "type": 3,
+            "name": "key",
+            "description": "Which link",
+            "required": true,
+            "choices": [
+              {
+                "name": "discord",
+                "value": "discord"
+              },
+              {
+                "name": "youtube",
+                "value": "youtube"
+              },
+              {
+                "name": "modpack",
+                "value": "modpack"
+              },
+              {
+                "name": "bluemap",
+                "value": "bluemap"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "sync",
+    "description": "Enable automatic website publishing from a channel",
+    "options": [
+      {
+        "type": 3,
+        "name": "category",
+        "description": "Content category",
+        "required": true,
+        "choices": [
+          {
+            "name": "rules",
+            "value": "rules"
+          },
+          {
+            "name": "updates",
+            "value": "updates"
+          }
+        ]
+      },
+      {
+        "type": 7,
+        "name": "channel",
+        "description": "Discord source channel",
+        "required": true
+      }
+    ]
+  },
+  {
+    "name": "unsync",
+    "description": "Disable automatic website publishing",
+    "options": [
+      {
+        "type": 3,
+        "name": "category",
+        "description": "Content category",
+        "required": true,
+        "choices": [
+          {
+            "name": "rules",
+            "value": "rules"
+          },
+          {
+            "name": "updates",
+            "value": "updates"
+          }
+        ]
+      }
+    ]
+  }
+]
