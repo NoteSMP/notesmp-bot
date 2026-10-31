@@ -26,8 +26,7 @@ const REGISTERED_COMMANDS = [
   ] },
   { name: "unsync", description: "Disable automatic website publishing", options: [
     { type: 3, name: "category", description: "Content category", required: true, choices: [{ name: "rules", value: "rules" }, { name: "updates", value: "updates" }] }
-  ] }
-
+  ] },
   { name: "publish", description: "Publish a Discord message to the NoteSMP website", options: [
     { type: 3, name: "message_id", description: "ID of the Discord message to publish", required: true },
     { type: 3, name: "gallery_category", description: "Gallery section", required: true, choices: ["events","buildings","places","inprogress"].map(value => ({ name: value, value })) },
