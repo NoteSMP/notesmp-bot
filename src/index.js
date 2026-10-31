@@ -248,8 +248,8 @@ async function handle(interaction, env) {
     if (existing) return respond(`Your Discord account is already linked to **${existing.minecraft_name}**. Ask an admin to unlink it first if this is wrong.`);
     const code = String(crypto.getRandomValues(new Uint32Array(1))[0] % 900000 + 100000);
     const now = Math.floor(Date.now()/1000);
-    await env.DB.prepare("DELETE FROM verification_codes WHERE discord_user_id=? OR expires_at<=?").bind(userId,now).run();
-    await env.DB.prepare("INSERT INTO verification_codes(code,discord_user_id,expires_at,created_at) VALUES(?,?,?,?)").bind(code,userId,now+120,now).run();
+    await env.DB.prepare("DELETE FROM verification_requests WHERE discord_user_id=? OR expires_at<=?").bind(userId,now).run();
+    await env.DB.prepare("INSERT INTO verification_requests(code,discord_user_id,minecraft_name,expires_at,created_at) VALUES(?,?,?,?,?)").bind(code,userId,playerName,now+120,now).run();
     return respond(null,true,{ title:"Minecraft verification", description:`Run this command in Minecraft within **2 minutes**:
 ` + "`/verify " + code + "`", fields:[{name:"Minecraft username",value:playerName,inline:true},{name:"Expires",value:"In 2 minutes",inline:true}], footer:{text:"Do not share this code with anyone"} });
   }
@@ -272,14 +272,21 @@ async function handle(interaction, env) {
     const stat = args.stat;
     if (stat) {
       const labels = { playtime_seconds:"Playtime (seconds)",blocks_broken:"Blocks broken",blocks_placed:"Blocks placed",deaths:"Deaths",kills:"Kills" };
-      return respond(null,true,{title:`${player.username} — ${labels[stat] || stat}`,description:String(player[stat] ?? 0)});
+      const detailed = await env.DB.prepare("SELECT stat_value FROM player_statistics WHERE minecraft_uuid=? AND stat_id=?").bind(player.uuid,stat).first();
+      const value = detailed?.stat_value ?? player[stat] ?? 0;
+      return respond(null,true,{title:`${player.username} — ${labels[stat] || stat}`,description:String(value)});
     }
-    const hours = Math.floor((player.playtime_seconds || 0)/3600);
-    return respond(null,true,{title:`${player.username} — Player statistics`,fields:[
-      {name:"Playtime",value:`${hours} hours`,inline:true},{name:"Blocks broken",value:String(player.blocks_broken || 0),inline:true},
-      {name:"Blocks placed",value:String(player.blocks_placed || 0),inline:true},{name:"Deaths",value:String(player.deaths || 0),inline:true},
-      {name:"Kills",value:String(player.kills || 0),inline:true},{name:"UUID",value:player.uuid,inline:false}
-    ]});
+    const detailed = await env.DB.prepare("SELECT stat_id,stat_value FROM player_statistics WHERE minecraft_uuid=? ORDER BY stat_id LIMIT 20").bind(player.uuid).all();
+    const fields = [
+      {name:"Playtime",value:`${Math.floor((player.playtime_seconds || 0)/3600)} hours`,inline:true},
+      {name:"Blocks broken",value:String(player.blocks_broken || 0),inline:true},
+      {name:"Blocks placed",value:String(player.blocks_placed || 0),inline:true},
+      {name:"Deaths",value:String(player.deaths || 0),inline:true},
+      {name:"Kills",value:String(player.kills || 0),inline:true}
+    ];
+    for (const item of (detailed.results || [])) fields.push({name:item.stat_id.slice(0,256),value:String(item.stat_value),inline:true});
+    fields.push({name:"UUID",value:player.uuid,inline:false});
+    return respond(null,true,{title:`${player.username} — Player statistics`,fields});
   }
   if (command === "serverstatus") {
     if (!(await hasAdminAccess(env, interaction))) return respond("You don’t have permission to configure server status.");
@@ -319,7 +326,71 @@ async function handle(interaction, env) {
   }
   return respond("This command is registered but its handler is not implemented yet.");
 }
+
+async function syncDiscordEvents(env) {
+  if (!env.DISCORD_BOT_TOKEN || !env.ALLOWED_GUILD_ID) return;
+  const events = await discordApi(env,`/guilds/${env.ALLOWED_GUILD_ID}/scheduled-events?with_user_count=true`);
+  for (const event of events || []) {
+    const postId = `discord-event-${event.id}`;
+    const channelId = "discord-event";
+    const images = event.cover_image ? [`https://cdn.discordapp.com/guild-events/${event.id}/${event.cover_image}.png?size=1024`] : [];
+    const eventData = {
+      scheduledStartTime:event.scheduled_start_time,scheduledEndTime:event.scheduled_end_time,
+      entityType:event.entity_type,location:event.entity_metadata?.location || null,
+      userCount:event.user_count || 0,status:event.status,creatorId:event.creator_id
+    };
+    const existing = await env.DB.prepare("SELECT post_id FROM published_posts WHERE source_guild_id=? AND source_channel_id=? AND source_message_id=? AND category='events'").bind(env.ALLOWED_GUILD_ID,channelId,event.id).first();
+    if (existing) {
+      await env.DB.prepare("UPDATE published_posts SET title=?,body=?,image_urls_json=?,event_data_json=?,updated_at=CURRENT_TIMESTAMP WHERE post_id=?")
+        .bind(cleanText(event.name,180),cleanText(event.description,4000),JSON.stringify(images),JSON.stringify(eventData),existing.post_id).run();
+    } else {
+      const six = await nextSixDigitId(env);
+      await env.DB.prepare("INSERT INTO published_posts(post_id,six_digit_id,category,source_guild_id,source_channel_id,source_message_id,title,body,image_urls_json,event_data_json) VALUES(?,?,?,?,?,?,?,?,?,?)")
+        .bind(postId,six,"events",env.ALLOWED_GUILD_ID,channelId,event.id,cleanText(event.name,180),cleanText(event.description,4000),JSON.stringify(images),JSON.stringify(eventData)).run();
+    }
+  }
+}
+async function refreshStatusMessage(env) {
+  const saved = await env.DB.prepare("SELECT channel_id,message_id FROM status_message WHERE id=1").first();
+  if (!saved?.message_id || !saved?.channel_id) return;
+  const status = await getServerSnapshot(env);
+  await discordApi(env,`/channels/${saved.channel_id}/messages/${saved.message_id}`,{
+    method:"PATCH",body:JSON.stringify({embeds:[serverEmbed(status)]})
+  });
+}
+async function refreshTwitchCreators(env) {
+  if (!env.TWITCH_CLIENT_ID || !env.TWITCH_CLIENT_SECRET) return;
+  const tokenResponse = await fetch("https://id.twitch.tv/oauth2/token",{
+    method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},
+    body:new URLSearchParams({client_id:env.TWITCH_CLIENT_ID,client_secret:env.TWITCH_CLIENT_SECRET,grant_type:"client_credentials"})
+  });
+  if (!tokenResponse.ok) throw new Error("Twitch app-token request failed");
+  const token = await tokenResponse.json();
+  const creators = await env.DB.prepare("SELECT twitch_login FROM creators").all();
+  const logins = (creators.results || []).map(row=>row.twitch_login);
+  if (!logins.length) return;
+  for (let i=0;i<logins.length;i+=100) {
+    const batch=logins.slice(i,i+100);
+    const query=batch.map(login=>"user_login="+encodeURIComponent(login)).join("&");
+    const response=await fetch("https://api.twitch.tv/helix/streams?"+query,{
+      headers:{"Client-Id":env.TWITCH_CLIENT_ID,"Authorization":`Bearer ${token.access_token}`}
+    });
+    if (!response.ok) throw new Error("Twitch stream lookup failed");
+    const data=await response.json();
+    const live=new Map((data.data || []).filter(stream=>/notesmp/i.test(stream.title || "")).map(stream=>[stream.user_login.toLowerCase(),stream]));
+    for (const login of batch) {
+      const stream=live.get(login);
+      await env.DB.prepare("UPDATE creators SET last_checked_at=CURRENT_TIMESTAMP,live_started_at=?,live_title=?,live_url=?,live_thumbnail_url=? WHERE twitch_login=?")
+        .bind(stream?.started_at || null,stream?.title || null,stream ? `https://www.twitch.tv/${login}` : null,stream?.thumbnail_url?.replace("{width}","640").replace("{height}","360") || null,login).run();
+    }
+  }
+}
+
 export default {
+  async scheduled(controller, env, ctx) {
+    const jobs = [syncDiscordEvents(env), refreshStatusMessage(env), refreshTwitchCreators(env)];
+    ctx.waitUntil(Promise.allSettled(jobs));
+  },
   async fetch(request, env) {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/") return json({ ok: true, service: "notesmp-discord-worker" });
