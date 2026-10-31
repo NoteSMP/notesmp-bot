@@ -10,24 +10,35 @@ const encoder = new TextEncoder();
 async function verifyDiscordRequest(request, body, publicKey) {
   const signature = request.headers.get("X-Signature-Ed25519");
   const timestamp = request.headers.get("X-Signature-Timestamp");
-  if (!signature || !timestamp || !publicKey) return false;
+  if (!signature || !timestamp || !publicKey) {
+    return { ok: false, reason: "missing-header-or-public-key" };
+  }
 
   // Reject stale requests to reduce replay risk.
   const seconds = Number(timestamp);
-  if (!Number.isFinite(seconds) || Math.abs(Date.now() / 1000 - seconds) > 300) return false;
+  if (!Number.isFinite(seconds) || Math.abs(Date.now() / 1000 - seconds) > 300) {
+    return { ok: false, reason: "timestamp-outside-300-seconds" };
+  }
 
   try {
+    if (!/^[0-9a-fA-F]{64}$/.test(publicKey)) {
+      return { ok: false, reason: "public-key-not-64-hex-characters" };
+    }
+    if (!/^[0-9a-fA-F]{128}$/.test(signature)) {
+      return { ok: false, reason: "signature-not-128-hex-characters" };
+    }
     const key = await crypto.subtle.importKey(
       "raw",
-      Uint8Array.from(publicKey.match(/.{1,2}/g) || [], (v) => parseInt(v, 16)),
+      Uint8Array.from(publicKey.match(/.{2}/g), (v) => parseInt(v, 16)),
       { name: "Ed25519" },
       false,
       ["verify"],
     );
-    const sig = Uint8Array.from(signature.match(/.{1,2}/g) || [], (v) => parseInt(v, 16));
-    return await crypto.subtle.verify("Ed25519", key, sig, encoder.encode(timestamp + body));
-  } catch {
-    return false;
+    const sig = Uint8Array.from(signature.match(/.{2}/g), (v) => parseInt(v, 16));
+    const ok = await crypto.subtle.verify("Ed25519", key, sig, encoder.encode(timestamp + body));
+    return { ok, reason: ok ? "valid" : "cryptographic-signature-mismatch" };
+  } catch (error) {
+    return { ok: false, reason: "verification-exception", detail: String(error?.name || "unknown") };
   }
 }
 
