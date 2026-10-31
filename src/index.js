@@ -135,10 +135,21 @@ export default {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/") return json({ ok: true, service: "notesmp-discord-worker" });
 
-    if (request.method === "POST" && url.pathname === "/setup/register-commands") {
+    const setupPath = url.pathname === "/setup" || url.pathname === "/setup/register-commands";
+    if (request.method === "OPTIONS" && setupPath) {
+      return new Response(null, { status: 204, headers: {
+        "Access-Control-Allow-Origin": "https://hoppscotch.io",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Authorization, Content-Type",
+        "Access-Control-Max-Age": "86400",
+        "Vary": "Origin"
+      }});
+    }
+
+    if (request.method === "POST" && setupPath) {
       const setupSecret = env.COMMAND_SETUP_SECRET;
       const authorization = request.headers.get("Authorization") || "";
-      if (!setupSecret || authorization !== `Bearer ${setupSecret}`) return json({ error: "Unauthorized" }, 401);
+      if (!setupSecret || (authorization !== setupSecret && authorization !== `Bearer ${setupSecret}`)) return json({ error: "Unauthorized" }, 401);
       if (!env.DISCORD_BOT_TOKEN || !env.DISCORD_APPLICATION_ID || !env.ALLOWED_GUILD_ID) {
         return json({ error: "Missing required Worker bindings: DISCORD_BOT_TOKEN, DISCORD_APPLICATION_ID, ALLOWED_GUILD_ID" }, 500);
       }
@@ -152,7 +163,15 @@ export default {
         return json({ error: "Discord rejected command registration", status: discordResponse.status }, 502);
       }
       const registered = await discordResponse.json();
-      return json({ ok: true, registered: registered.length });
+      return new Response(JSON.stringify({ ok: true, registered: registered.length, commands: registered.map(command => command.name) }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "https://hoppscotch.io",
+          "Vary": "Origin"
+        }
+      });
     }
 
     if (request.method !== "POST" || url.pathname !== "/interactions") return json({ error: "Not found" }, 404);
