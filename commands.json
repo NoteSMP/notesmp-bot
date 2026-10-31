@@ -176,14 +176,10 @@
       },
       {
         "type": 3,
-        "name": "category",
-        "description": "Website category",
+        "name": "gallery_category",
+        "description": "Gallery section",
         "required": true,
         "choices": [
-          {
-            "name": "gallery",
-            "value": "gallery"
-          },
           {
             "name": "events",
             "value": "events"
