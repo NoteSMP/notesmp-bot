@@ -1,0 +1,13 @@
+{
+  "$schema": "https://developers.cloudflare.com/workers/wrangler/configuration/schema.json",
+  "name": "notesmp-discord-bot",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-31",
+  "workers_dev": true,
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "notesmp-data",
+    "database_id": "2fa4bdb1-faf0-432b-8b42-5f02c2cfdea3"
+  }],
+  "vars": { "ALLOWED_GUILD_ID": "SET_YOUR_DISCORD_GUILD_ID" }
+}
