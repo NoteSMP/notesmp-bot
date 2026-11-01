@@ -519,7 +519,7 @@ async function refreshTwitchCreators(env) {
     });
     if (!response.ok) throw new Error("Twitch stream lookup failed");
     const data=await response.json();
-    const live=new Map((data.data || []).filter(stream=>/notesmp/i.test(stream.title || "")).map(stream=>[stream.user_login.toLowerCase(),stream]));
+    const live=new Map((data.data || []).map(stream=>[stream.user_login.toLowerCase(),stream]));
     for (const login of batch) {
       const stream=live.get(login);
       await env.DB.prepare("UPDATE creators SET last_checked_at=CURRENT_TIMESTAMP,live_started_at=?,live_title=?,live_url=?,live_thumbnail_url=? WHERE twitch_login=?")
