@@ -384,15 +384,18 @@ async function syncDiscordEvents(env) {
   for (const event of events || []) {
     const postId = `discord-event-${event.id}`;
     const channelId = "discord-event";
-    const coverExtension = typeof event.cover_image === "string" && event.cover_image.startsWith("a_") ? "gif" : "png";
-    const coverUrl = event.cover_image ? `https://cdn.discordapp.com/guild-events/${event.id}/${event.cover_image}.${coverExtension}?size=1024` : null;
+    // Discord API payloads may expose the scheduled-event cover hash as "image"
+    // (newer API docs) or "cover_image" (older payloads/libraries).
+    const coverHash = typeof event.image === "string" ? event.image : typeof event.cover_image === "string" ? event.cover_image : null;
+    const coverExtension = coverHash?.startsWith("a_") ? "gif" : "png";
+    const coverUrl = coverHash ? `https://cdn.discordapp.com/guild-events/${event.id}/${coverHash}.${coverExtension}?size=1024` : null;
     const images = coverUrl ? [coverUrl] : [];
     let channelName = null;
     if (event.channel_id) {
       try { const channel = await discordApi(env, `/channels/${event.channel_id}`); channelName = channel?.name || null; } catch {}
     }
     const eventData = {
-      id:event.id,eventId:event.id,coverImage:coverUrl,coverHash:event.cover_image || null,
+      id:event.id,eventId:event.id,coverImage:coverUrl,coverHash,
       scheduledStartTime:event.scheduled_start_time,scheduledEndTime:event.scheduled_end_time,
       entityType:event.entity_type,location:event.entity_metadata?.location || null,
       channelId:event.channel_id || null,channelName,guildId:env.ALLOWED_GUILD_ID,
