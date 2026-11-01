@@ -347,6 +347,32 @@ async function handle(interaction, env) {
     fields.push({name:"UUID",value:player.uuid,inline:false});
     return respond(null,true,{title:`${player.username} — Player statistics`,fields});
   }
+  if (command === "news") {
+    if (!(await hasAdminAccess(env, interaction))) return respond("You don’t have permission to manage website news.");
+    if (args.unset) {
+      await env.DB.prepare("DELETE FROM published_posts WHERE category='news'").run();
+      return respond("Website news banner removed.");
+    }
+    const set = args.set || {};
+    const mode = set.maintenance ? "maintenance" : set.warning ? "warning" : set.info ? "info" : null;
+    if (!mode) return respond("Choose maintenance, warning, info, or unset.");
+    const values = set[mode] || {};
+    const title = mode === "maintenance" ? "Maintenance" : cleanText(values.title, 180).trim();
+    const subtitle = mode === "maintenance" ? cleanText(values.reason, 240).trim() : cleanText(values.subtitle, 240).trim();
+    const eventData = { type: mode };
+    if (!title || !subtitle) return respond("Provide a title and subtitle/reason.");
+    if (mode === "maintenance") {
+      const until = Date.parse(values.timestamp_until_end || "");
+      if (!Number.isFinite(until) || until <= Date.now()) return respond("Provide a future end time as an ISO timestamp, for example 2026-11-01T18:00:00Z.");
+      eventData.expiryAt = new Date(until).toISOString();
+    }
+    await env.DB.prepare("DELETE FROM published_posts WHERE category='news'").run();
+    const postId = crypto.randomUUID();
+    const sixDigitId = await nextSixDigitId(env);
+    await env.DB.prepare("INSERT INTO published_posts(post_id,six_digit_id,category,group_name,source_guild_id,source_channel_id,source_message_id,author_discord_id,title,subtitle,body,image_urls_json,event_data_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .bind(postId,sixDigitId,"news",mode,interaction.guild_id,interaction.channel_id || "discord-news","news-" + postId,userId,title,subtitle,subtitle,"[]",JSON.stringify(eventData)).run();
+    return respond("Website news banner set: **" + title + "**.");
+  }
   if (command === "serverstatus") {
     if (!(await hasAdminAccess(env, interaction))) return respond("You don’t have permission to configure server status.");
     const channelId = args.sendmessage?.channel;
