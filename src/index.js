@@ -63,14 +63,17 @@ const REGISTERED_COMMANDS = [
   ] },
   { name: "news", description: "Manage website News", options: [
     { type: 2, name: "set", description: "Publish a News post", options: [
-      { type: 2, name: "maintenance", description: "Schedule maintenance", options: [
-        { type: 1, name: "timestamp", description: "Use Unix timestamp seconds", options: [{ type: 3, name: "reason", description: "Maintenance reason", required: true }, { type: 3, name: "timestamp", description: "10-digit Unix timestamp", required: true }] },
-        { type: 1, name: "duration", description: "Use duration format", options: [{ type: 3, name: "reason", description: "Maintenance reason", required: true }, { type: 3, name: "duration", description: "e.g. 1d4h30m6s", required: true }] }
+      { type: 1, name: "maintenance", description: "Schedule maintenance", options: [
+        { type: 3, name: "reason", description: "Maintenance reason", required: true },
+        { type: 3, name: "timestamp", description: "10-digit Unix timestamp (seconds), optional", required: false },
+        { type: 3, name: "duration", description: "Duration such as 2h or 1d4h30m, optional", required: false }
       ] },
       { type: 1, name: "warning", description: "Set a warning", options: [{ type: 3, name: "title", description: "News title", required: true }, { type: 3, name: "subtitle", description: "News subtitle", required: true }] },
       { type: 1, name: "info", description: "Set an info post", options: [{ type: 3, name: "title", description: "News title", required: true }, { type: 3, name: "subtitle", description: "News subtitle", required: true }] }
     ] },
-    { type: 1, name: "unset", description: "Remove the active News post" }
+    { type: 2, name: "unset", description: "Remove the active News post", options: [
+      { type: 1, name: "remove", description: "Remove the active News post" }
+    ] }
   ] },
   { name: "serverstatus", description: "Manage the live Discord server status message", options: [
     { type: 1, name: "sendmessage", description: "Create or replace the status message", options: [{ type: 7, name: "channel", description: "Channel for the status embed", required: true }] }
@@ -92,6 +95,14 @@ async function verifyDiscordRequest(request, body, publicKey) {
 }
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } });
+}
+function setupJson(data, status = 200) {
+  return new Response(JSON.stringify(data), { status, headers: {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+    "Access-Control-Allow-Origin": "*",
+    "Vary": "Origin"
+  } });
 }
 function respond(content, ephemeral = true, embed = null) {
   return json({ type: 4, data: { ...(embed ? { embeds: [embed] } : { content }), ...(ephemeral ? { flags: 64 } : {}), allowed_mentions: { parse: [] } } });
@@ -563,7 +574,7 @@ export default {
     const setupPath = url.pathname === "/setup" || url.pathname === "/setup/register-commands" || url.pathname === "/setup/migrate";
     if (request.method === "OPTIONS" && setupPath) {
       return new Response(null, { status: 204, headers: {
-        "Access-Control-Allow-Origin": "https://hoppscotch.io",
+        "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "POST, OPTIONS",
         "Access-Control-Allow-Headers": "Authorization, Content-Type",
         "Access-Control-Max-Age": "86400",
@@ -575,7 +586,7 @@ export default {
     if (request.method === "POST" && url.pathname === "/setup/migrate") {
       const secret = env.COMMAND_SETUP_SECRET;
       const authorization = request.headers.get("Authorization") || "";
-      if (!secret || (authorization !== secret && authorization !== `Bearer ${secret}`)) return json({error:"Unauthorized"},401);
+      if (!secret || (authorization !== secret && authorization !== `Bearer ${secret}`)) return setupJson({error:"Unauthorized"},401);
       await env.DB.exec(`
         CREATE TABLE IF NOT EXISTS bot_config (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS access_entries (entry_type TEXT NOT NULL CHECK (entry_type IN ('user','role')), discord_id TEXT NOT NULL, added_by TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(entry_type, discord_id));
@@ -605,7 +616,7 @@ export default {
         headers: {
           "Content-Type": "application/json; charset=utf-8",
           "Cache-Control": "no-store",
-          "Access-Control-Allow-Origin": "https://hoppscotch.io",
+          "Access-Control-Allow-Origin": "*",
           "Vary": "Origin"
         }
       });
@@ -614,9 +625,9 @@ export default {
     if (request.method === "POST" && setupPath && url.pathname !== "/setup/migrate") {
       const setupSecret = env.COMMAND_SETUP_SECRET;
       const authorization = request.headers.get("Authorization") || "";
-      if (!setupSecret || (authorization !== setupSecret && authorization !== `Bearer ${setupSecret}`)) return json({ error: "Unauthorized" }, 401);
+      if (!setupSecret || (authorization !== setupSecret && authorization !== `Bearer ${setupSecret}`)) return setupJson({ error: "Unauthorized" }, 401);
       if (!env.DISCORD_BOT_TOKEN || !env.DISCORD_APPLICATION_ID || !env.ALLOWED_GUILD_ID) {
-        return json({ error: "Missing required Worker bindings: DISCORD_BOT_TOKEN, DISCORD_APPLICATION_ID, ALLOWED_GUILD_ID" }, 500);
+        return setupJson({ error: "Missing required Worker bindings: DISCORD_BOT_TOKEN, DISCORD_APPLICATION_ID, ALLOWED_GUILD_ID" }, 500);
       }
       const discordResponse = await fetch(`https://discord.com/api/v10/applications/${env.DISCORD_APPLICATION_ID}/guilds/${env.ALLOWED_GUILD_ID}/commands`, {
         method: "PUT",
@@ -626,7 +637,7 @@ export default {
       if (!discordResponse.ok) {
         const details = await discordResponse.text();
         console.error("Command registration rejected by Discord:", discordResponse.status, details);
-        return json({ error: "Discord rejected command registration", status: discordResponse.status, details }, 502);
+        return setupJson({ error: "Discord rejected command registration", status: discordResponse.status, details }, 502);
       }
       const registered = await discordResponse.json();
       return new Response(JSON.stringify({ ok: true, registered: registered.length, commands: registered.map(command => command.name) }), {
@@ -634,7 +645,7 @@ export default {
         headers: {
           "Content-Type": "application/json; charset=utf-8",
           "Cache-Control": "no-store",
-          "Access-Control-Allow-Origin": "https://hoppscotch.io",
+          "Access-Control-Allow-Origin": "*",
           "Vary": "Origin"
         }
       });
