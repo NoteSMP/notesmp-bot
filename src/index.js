@@ -358,30 +358,38 @@ async function handle(interaction, env) {
       return respond("Website news banner removed.");
     }
     const set = args.set || {};
-    const maintenance = set.maintenance || {};
-    // Discord's timestamp option is a string duration (for example, "2h"),
-    // while reason is a separate sibling option.
-    const timestampInput = typeof maintenance.timestamp === "string" ? maintenance.timestamp : "";
-    const durationInput = typeof maintenance.duration === "string" ? maintenance.duration : "";
-    const mode = timestampInput || durationInput || maintenance.reason || maintenance.timestamp_until_end
+    const maintenance = set.maintenance && typeof set.maintenance === "object" ? set.maintenance : {};
+    // Discord may expose the duration under timestamp, duration, or as a direct
+    // maintenance value depending on the registered command schema.
+    const rawDuration = [maintenance.timestamp, maintenance.duration, maintenance.timestamp_until_end,
+      typeof set.maintenance === "string" ? set.maintenance : "", set.timestamp, set.duration]
+      .find(value => typeof value === "string" && value.trim()) || "";
+    const reason = cleanText(maintenance.reason || set.reason, 240).trim();
+    const mode = rawDuration || reason || maintenance.reason || maintenance.timestamp_until_end
       ? "maintenance" : set.warning ? "warning" : set.info ? "info" : null;
     if (!mode) return respond("Choose maintenance timestamp/duration, warning, info, or unset.");
-    const values = mode === "maintenance" ? maintenance : (set[mode] || {});
+    const values = mode === "maintenance" ? (set[mode] || {}) : (set[mode] || {});
     const title = mode === "maintenance" ? "Maintenance" : cleanText(values.title, 180).trim();
-    const subtitle = mode === "maintenance" ? cleanText(maintenance.reason, 240).trim() : cleanText(values.subtitle, 240).trim();
+    const subtitle = mode === "maintenance" ? reason : cleanText(values.subtitle, 240).trim();
     const eventData = { type: mode };
     if (!title || !subtitle) return respond("Provide a maintenance reason, or a title and subtitle for warning/info.");
     if (mode === "maintenance") {
+      const raw = String(rawDuration).trim();
       let until = NaN;
-      const raw = String(timestampInput || durationInput || maintenance.timestamp_until_end || "").trim();
-      if (/^\\d{10}$/.test(raw)) until = Number(raw) * 1000;
-      else {
-        const match = raw.match(/^(?:(\\d+)d)?(?:(\\d+)h)?(?:(\\d+)m)?(?:(\\d+)s)?$/i);
-        if (match && match.slice(1).some(part => part !== undefined)) {
-          until = Date.now() + (Number(match[1] || 0) * 86400 + Number(match[2] || 0) * 3600 + Number(match[3] || 0) * 60 + Number(match[4] || 0)) * 1000;
+      if (/^\\d{10}$/.test(raw)) {
+        until = Number(raw) * 1000;
+      } else {
+        // Accept compact durations such as "2h", "30m", "1d4h30m", and
+        // whitespace between units. Require every character to be consumed.
+        const durationPattern = /^(\\d+\\s*d)?\\s*(\\d+\\s*h)?\\s*(\\d+\\s*m)?\\s*(\\d+\\s*s)?$/i;
+        const match = raw.match(durationPattern);
+        if (match && match.slice(1).some(Boolean)) {
+          const number = part => Number((part || "").replace(/[a-z\\s]/gi, "")) || 0;
+          const seconds = number(match[1]) * 86400 + number(match[2]) * 3600 + number(match[3]) * 60 + number(match[4]);
+          if (seconds > 0) until = Date.now() + seconds * 1000;
         }
       }
-      if (!Number.isFinite(until) || until <= Date.now()) return respond("Use a future 10-digit Unix timestamp (seconds) or duration like 1d4h30m6s.");
+      if (!Number.isFinite(until) || until <= Date.now()) return respond("Use a future 10-digit Unix timestamp (seconds) or duration such as 2h, 30m, or 1d4h30m.");
       eventData.expiryAt = new Date(until).toISOString();
     }
     await env.DB.prepare("DELETE FROM published_posts WHERE category='news'").run();
