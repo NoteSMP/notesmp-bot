@@ -61,6 +61,14 @@ const REGISTERED_COMMANDS = [
     { type: 6, name: "discord_user", description: "Linked Discord account", required: false },
     { type: 3, name: "stat", description: "Minecraft statistic ID, e.g. minecraft:mob_kills", required: false }
   ] },
+  { name: "news", description: "Manage the website news banner", options: [
+    { type: 2, name: "set", description: "Set a news banner", options: [
+      { type: 1, name: "maintenance", description: "Set maintenance with an end time", options: [{ type: 3, name: "reason", description: "Maintenance reason", required: true }, { type: 3, name: "timestamp_until_end", description: "End time as ISO timestamp", required: true }] },
+      { type: 1, name: "warning", description: "Set an orange warning", options: [{ type: 3, name: "title", description: "News title", required: true }, { type: 3, name: "subtitle", description: "News subtitle", required: true }] },
+      { type: 1, name: "info", description: "Set a turquoise info notice", options: [{ type: 3, name: "title", description: "News title", required: true }, { type: 3, name: "subtitle", description: "News subtitle", required: true }] }
+    ] },
+    { type: 1, name: "unset", description: "Remove the active news banner" }
+  ] },
   { name: "serverstatus", description: "Manage the live Discord server status message", options: [
     { type: 1, name: "sendmessage", description: "Create or replace the status message", options: [{ type: 7, name: "channel", description: "Channel for the status embed", required: true }] }
   ] }
