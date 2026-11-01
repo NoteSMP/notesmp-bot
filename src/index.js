@@ -358,18 +358,27 @@ async function handle(interaction, env) {
     }
     const set = args.set || {};
     const maintenance = set.maintenance || {};
-    const mode = maintenance.timestamp || maintenance.duration ? "maintenance" : set.warning ? "warning" : set.info ? "info" : null;
+    // Compatibility: Discord may still have the previous registered command shape
+    // (reason + timestamp_until_end) until command registration is refreshed.
+    const legacyMaintenance = maintenance.reason || maintenance.timestamp_until_end;
+    const mode = maintenance.timestamp || maintenance.duration || legacyMaintenance ? "maintenance" : set.warning ? "warning" : set.info ? "info" : null;
     if (!mode) return respond("Choose maintenance timestamp/duration, warning, info, or unset.");
-    const values = mode === "maintenance" ? (maintenance.timestamp || maintenance.duration) : (set[mode] || {});
+    const values = mode === "maintenance" ? (maintenance.timestamp || maintenance.duration || maintenance) : (set[mode] || {});
     const title = mode === "maintenance" ? "Maintenance" : cleanText(values.title, 180).trim();
     const subtitle = mode === "maintenance" ? cleanText(values.reason, 240).trim() : cleanText(values.subtitle, 240).trim();
     const eventData = { type: mode };
     if (!title || !subtitle) return respond("Provide a title and subtitle/reason.");
     if (mode === "maintenance") {
       let until = NaN;
-      if (maintenance.timestamp) {
-        const raw = String(values.timestamp || "").trim();
+      if (maintenance.timestamp || values.timestamp_until_end) {
+        const raw = String(values.timestamp || values.timestamp_until_end || "").trim();
         if (/^\d{10}$/.test(raw)) until = Number(raw) * 1000;
+        else {
+          const match = raw.match(/^(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/i);
+          if (match && match.slice(1).some(part => part !== undefined)) {
+            until = Date.now() + (Number(match[1] || 0) * 86400 + Number(match[2] || 0) * 3600 + Number(match[3] || 0) * 60 + Number(match[4] || 0)) * 1000;
+          }
+        }
       } else {
         const raw = String(values.duration || "").trim();
         const match = raw.match(/^(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/i);
