@@ -61,13 +61,16 @@ const REGISTERED_COMMANDS = [
     { type: 6, name: "discord_user", description: "Linked Discord account", required: false },
     { type: 3, name: "stat", description: "Minecraft statistic ID, e.g. minecraft:mob_kills", required: false }
   ] },
-  { name: "news", description: "Manage the website news banner", options: [
-    { type: 2, name: "set", description: "Set a news banner", options: [
-      { type: 1, name: "maintenance", description: "Set maintenance with an end time", options: [{ type: 3, name: "reason", description: "Maintenance reason", required: true }, { type: 3, name: "timestamp_until_end", description: "End time as ISO timestamp", required: true }] },
-      { type: 1, name: "warning", description: "Set an orange warning", options: [{ type: 3, name: "title", description: "News title", required: true }, { type: 3, name: "subtitle", description: "News subtitle", required: true }] },
-      { type: 1, name: "info", description: "Set a turquoise info notice", options: [{ type: 3, name: "title", description: "News title", required: true }, { type: 3, name: "subtitle", description: "News subtitle", required: true }] }
+  { name: "news", description: "Manage website News", options: [
+    { type: 2, name: "set", description: "Publish a News post", options: [
+      { type: 2, name: "maintenance", description: "Schedule maintenance", options: [
+        { type: 1, name: "timestamp", description: "Use Unix timestamp seconds", options: [{ type: 3, name: "reason", description: "Maintenance reason", required: true }, { type: 3, name: "timestamp", description: "10-digit Unix timestamp", required: true }] },
+        { type: 1, name: "duration", description: "Use duration format", options: [{ type: 3, name: "reason", description: "Maintenance reason", required: true }, { type: 3, name: "duration", description: "e.g. 1d4h30m6s", required: true }] }
+      ] },
+      { type: 1, name: "warning", description: "Set a warning", options: [{ type: 3, name: "title", description: "News title", required: true }, { type: 3, name: "subtitle", description: "News subtitle", required: true }] },
+      { type: 1, name: "info", description: "Set an info post", options: [{ type: 3, name: "title", description: "News title", required: true }, { type: 3, name: "subtitle", description: "News subtitle", required: true }] }
     ] },
-    { type: 1, name: "unset", description: "Remove the active news banner" }
+    { type: 1, name: "unset", description: "Remove the active News post" }
   ] },
   { name: "serverstatus", description: "Manage the live Discord server status message", options: [
     { type: 1, name: "sendmessage", description: "Create or replace the status message", options: [{ type: 7, name: "channel", description: "Channel for the status embed", required: true }] }
@@ -354,16 +357,27 @@ async function handle(interaction, env) {
       return respond("Website news banner removed.");
     }
     const set = args.set || {};
-    const mode = set.maintenance ? "maintenance" : set.warning ? "warning" : set.info ? "info" : null;
-    if (!mode) return respond("Choose maintenance, warning, info, or unset.");
-    const values = set[mode] || {};
+    const maintenance = set.maintenance || {};
+    const mode = maintenance.timestamp || maintenance.duration ? "maintenance" : set.warning ? "warning" : set.info ? "info" : null;
+    if (!mode) return respond("Choose maintenance timestamp/duration, warning, info, or unset.");
+    const values = mode === "maintenance" ? (maintenance.timestamp || maintenance.duration) : (set[mode] || {});
     const title = mode === "maintenance" ? "Maintenance" : cleanText(values.title, 180).trim();
     const subtitle = mode === "maintenance" ? cleanText(values.reason, 240).trim() : cleanText(values.subtitle, 240).trim();
     const eventData = { type: mode };
     if (!title || !subtitle) return respond("Provide a title and subtitle/reason.");
     if (mode === "maintenance") {
-      const until = Date.parse(values.timestamp_until_end || "");
-      if (!Number.isFinite(until) || until <= Date.now()) return respond("Provide a future end time as an ISO timestamp, for example 2026-11-01T18:00:00Z.");
+      let until = NaN;
+      if (maintenance.timestamp) {
+        const raw = String(values.timestamp || "").trim();
+        if (/^\d{10}$/.test(raw)) until = Number(raw) * 1000;
+      } else {
+        const raw = String(values.duration || "").trim();
+        const match = raw.match(/^(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/i);
+        if (match && match.slice(1).some(part => part !== undefined)) {
+          until = Date.now() + (Number(match[1] || 0) * 86400 + Number(match[2] || 0) * 3600 + Number(match[3] || 0) * 60 + Number(match[4] || 0)) * 1000;
+        }
+      }
+      if (!Number.isFinite(until) || until <= Date.now()) return respond("Use a future 10-digit Unix timestamp (seconds) or duration like 1d4h30m6s.");
       eventData.expiryAt = new Date(until).toISOString();
     }
     await env.DB.prepare("DELETE FROM published_posts WHERE category='news'").run();
