@@ -513,6 +513,20 @@ async function refreshTwitchCreators(env) {
   if (!logins.length) return;
   for (let i=0;i<logins.length;i+=100) {
     const batch=logins.slice(i,i+100);
+    const query=batch.map(login=>"login="+encodeURIComponent(login)).join("&");
+    const usersResponse=await fetch("https://api.twitch.tv/helix/users?"+query,{
+      headers:{"Client-Id":env.TWITCH_CLIENT_ID,"Authorization":`Bearer ${token.access_token}`}
+    });
+    if (usersResponse.ok) {
+      const users=await usersResponse.json();
+      for (const user of (users.data || [])) {
+        if (user.profile_image_url) await env.DB.prepare("INSERT INTO bot_config(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=CURRENT_TIMESTAMP")
+          .bind("twitch_avatar_"+user.login.toLowerCase(),user.profile_image_url).run();
+      }
+    }
+  }
+  for (let i=0;i<logins.length;i+=100) {
+    const batch=logins.slice(i,i+100);
     const query=batch.map(login=>"user_login="+encodeURIComponent(login)).join("&");
     const response=await fetch("https://api.twitch.tv/helix/streams?"+query,{
       headers:{"Client-Id":env.TWITCH_CLIENT_ID,"Authorization":`Bearer ${token.access_token}`}
