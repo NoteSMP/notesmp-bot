@@ -385,7 +385,7 @@ async function syncDiscordEvents(env) {
     const postId = `discord-event-${event.id}`;
     const channelId = "discord-event";
     const coverExtension = typeof event.cover_image === "string" && event.cover_image.startsWith("a_") ? "gif" : "png";
-    const coverUrl = event.cover_image ? `https://cdn.discordapp.com/guild-events/${env.ALLOWED_GUILD_ID}/${event.id}/${event.cover_image}.${coverExtension}?size=1024` : null;
+    const coverUrl = event.cover_image ? `https://cdn.discordapp.com/guild-events/${event.id}/${event.cover_image}.${coverExtension}?size=1024` : null;
     const images = coverUrl ? [coverUrl] : [];
     let channelName = null;
     if (event.channel_id) {
