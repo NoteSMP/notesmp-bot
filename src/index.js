@@ -384,12 +384,13 @@ async function syncDiscordEvents(env) {
   for (const event of events || []) {
     const postId = `discord-event-${event.id}`;
     const channelId = "discord-event";
-    const images = event.cover_image ? [`https://cdn.discordapp.com/guild-events/${event.id}/${event.cover_image}.png?size=1024`] : [];
+    const images = event.cover_image ? [`https://cdn.discordapp.com/guild-events/${env.ALLOWED_GUILD_ID}/${event.id}/${event.cover_image}.png?size=1024`] : [];
     let channelName = null;
     if (event.channel_id) {
       try { const channel = await discordApi(env, `/channels/${event.channel_id}`); channelName = channel?.name || null; } catch {}
     }
     const eventData = {
+      eventId:event.id,
       scheduledStartTime:event.scheduled_start_time,scheduledEndTime:event.scheduled_end_time,
       entityType:event.entity_type,location:event.entity_metadata?.location || null,
       channelId:event.channel_id || null,channelName,guildId:env.ALLOWED_GUILD_ID,
