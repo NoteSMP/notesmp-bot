@@ -385,9 +385,14 @@ async function syncDiscordEvents(env) {
     const postId = `discord-event-${event.id}`;
     const channelId = "discord-event";
     const images = event.cover_image ? [`https://cdn.discordapp.com/guild-events/${event.id}/${event.cover_image}.png?size=1024`] : [];
+    let channelName = null;
+    if (event.channel_id) {
+      try { const channel = await discordApi(env, `/channels/${event.channel_id}`); channelName = channel?.name || null; } catch {}
+    }
     const eventData = {
       scheduledStartTime:event.scheduled_start_time,scheduledEndTime:event.scheduled_end_time,
       entityType:event.entity_type,location:event.entity_metadata?.location || null,
+      channelId:event.channel_id || null,channelName,guildId:env.ALLOWED_GUILD_ID,
       userCount:event.user_count || 0,status:event.status,creatorId:event.creator_id
     };
     const existing = await env.DB.prepare("SELECT post_id FROM published_posts WHERE source_guild_id=? AND source_channel_id=? AND source_message_id=? AND category='events'").bind(env.ALLOWED_GUILD_ID,channelId,event.id).first();
