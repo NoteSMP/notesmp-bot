@@ -37,7 +37,15 @@ const REGISTERED_COMMANDS = [
   ] },
   { name: "post", description: "Manage published website posts", options: [
     { type: 1, name: "remove", description: "Remove a published post", options: [{ type: 3, name: "post_id", description: "Six-digit post ID", required: true }] },
-    { type: 1, name: "update", description: "Refresh a post from its original Discord message", options: [{ type: 3, name: "post_id", description: "Six-digit post ID", required: true }] }
+    { type: 1, name: "update", description: "Refresh only synced rules or updates posts", options: [{ type: 3, name: "post_id", description: "Six-digit post ID", required: true }] },
+    { type: 1, name: "modify", description: "Edit a gallery post without refreshing its Discord source", options: [
+      { type: 3, name: "post_id", description: "Six-digit gallery post ID", required: true },
+      { type: 3, name: "title", description: "Gallery title", required: true },
+      { type: 3, name: "subtitle", description: "Gallery subtitle", required: true },
+      { type: 3, name: "category", description: "Gallery section", required: true, choices: ["events","buildings","places","inprogress"].map(value => ({ name: value, value })) },
+      { type: 3, name: "dimension", description: "Minecraft dimension", required: true, choices: ["overworld","nether","end"].map(value => ({ name: value, value })) },
+      { type: 3, name: "coordinates", description: "Coordinates, e.g. 120, 64, -30", required: false }
+    ] }
   ] },
   { name: "creator", description: "Manage NoteSMP creators", options: [
     { type: 1, name: "add", description: "Add a Twitch creator", options: [{ type: 3, name: "twitchname", description: "Twitch username", required: true }] },
@@ -239,21 +247,38 @@ async function handle(interaction, env) {
       await env.DB.prepare("DELETE FROM published_posts WHERE post_id=?").bind(row.post_id).run();
       return respond(`Removed website post **${id}**.`);
     }
-    const id = args.update?.post_id;
-    const row = await env.DB.prepare("SELECT * FROM published_posts WHERE six_digit_id=?").bind(id).first();
-    if (!row) return respond("No published post has that six-digit ID.");
-    const message = await fetchSourceMessage(env, row.source_channel_id, row.source_message_id);
-    const images = messageImages(message);
-    const linked = await env.DB.prepare("SELECT minecraft_uuid,minecraft_name FROM account_links WHERE discord_user_id=?").bind(message.author?.id || "").first();
-    await env.DB.prepare("UPDATE published_posts SET body=?,image_urls_json=?,author_discord_id=?,linked_minecraft_uuid=?,linked_minecraft_name=?,updated_at=CURRENT_TIMESTAMP WHERE post_id=?")
-      .bind(cleanText(message.content,4000),JSON.stringify(images),message.author?.id || null,linked?.minecraft_uuid || null,linked?.minecraft_name || null,row.post_id).run();
-    const savedEventData = (() => { try { return JSON.parse(row.event_data_json || "{}"); } catch { return {}; } })();
-    return respond(null, true, { title: "Website post updated", description: `Post **${id}** has been refreshed from its original Discord message.`, fields: [
-      { name: "Images", value: String(images.length), inline: true },
-      { name: "Dimension", value: savedEventData.dimension || "Not set", inline: true },
-      { name: "Coordinates", value: displayCoordinates(savedEventData.coordinates), inline: false },
-      { name: "Minecraft author", value: linked?.minecraft_name || "Not linked", inline: true }
-    ] });
+    if (args.update) {
+      const id = args.update.post_id;
+      const row = await env.DB.prepare("SELECT * FROM published_posts WHERE six_digit_id=?").bind(id).first();
+      if (!row) return respond("No published post has that six-digit ID.");
+      if (!["rules", "updates"].includes(row.category)) return respond("Use /post modify for gallery posts. /post update only refreshes synced rules or updates.");
+      const message = await fetchSourceMessage(env, row.source_channel_id, row.source_message_id);
+      const images = messageImages(message);
+      const linked = await env.DB.prepare("SELECT minecraft_uuid,minecraft_name FROM account_links WHERE discord_user_id=?").bind(message.author?.id || "").first();
+      await env.DB.prepare("UPDATE published_posts SET body=?,image_urls_json=?,author_discord_id=?,linked_minecraft_uuid=?,linked_minecraft_name=?,updated_at=CURRENT_TIMESTAMP WHERE post_id=?")
+        .bind(cleanText(message.content,4000),JSON.stringify(images),message.author?.id || null,linked?.minecraft_uuid || null,linked?.minecraft_name || null,row.post_id).run();
+      return respond(null, true, { title: "Synced post updated", description: `Rules/updates post **${id}** refreshed from its original Discord message.`, fields: [{name:"Images",value:String(images.length),inline:true}] });
+    }
+    if (args.modify) {
+      const values = args.modify;
+      const id = values.post_id;
+      const row = await env.DB.prepare("SELECT * FROM published_posts WHERE six_digit_id=?").bind(id).first();
+      if (!row) return respond("No published post has that six-digit ID.");
+      if (row.category !== "gallery") return respond("/post modify only edits gallery posts. Use /post update for synced rules or updates.");
+      const category = values.category;
+      const dimension = values.dimension;
+      if (!["events","buildings","places","inprogress"].includes(category)) return respond("Choose a valid gallery category.");
+      if (!["overworld","nether","end"].includes(dimension)) return respond("Choose overworld, nether, or end.");
+      const coordinates = parseCoordinates(cleanText(values.coordinates || "",100));
+      if (values.coordinates && !coordinates) return respond("Coordinates must contain exactly three numbers, such as 120, 64, -30.");
+      let eventData = {};
+      try { eventData = JSON.parse(row.event_data_json || "{}"); } catch {}
+      eventData = { ...eventData, galleryGroup: category, dimension, coordinates };
+      await env.DB.prepare("UPDATE published_posts SET title=?,subtitle=?,group_name=?,event_data_json=?,updated_at=CURRENT_TIMESTAMP WHERE post_id=?")
+        .bind(cleanText(values.title,180),cleanText(values.subtitle,240),category,JSON.stringify(eventData),row.post_id).run();
+      return respond(null,true,{title:"Gallery post modified",description:`Gallery post **${id}** was edited. Its Discord source, body, and images were left unchanged.`,fields:[{name:"Category",value:category,inline:true},{name:"Dimension",value:dimension,inline:true},{name:"Coordinates",value:displayCoordinates(coordinates),inline:false}]});
+    }
+    return respond("Choose remove, update, or modify.");
   }
   if (command === "creator") {
     if (!(await hasAdminAccess(env, interaction))) return respond("You don’t have permission to manage creators.");
