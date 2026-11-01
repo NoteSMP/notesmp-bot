@@ -297,6 +297,7 @@ async function handle(interaction, env) {
     if (!/^[a-z0-9_]{1,25}$/.test(login)) return respond("Enter a valid Twitch username.");
     if (args.add) {
       await env.DB.prepare("INSERT OR IGNORE INTO creators(twitch_login,added_by) VALUES(?,?)").bind(login,userId).run();
+      if (env.TWITCH_CLIENT_ID && env.TWITCH_CLIENT_SECRET) await refreshTwitchCreators(env);
       return respond(env.TWITCH_CLIENT_ID && env.TWITCH_CLIENT_SECRET ? `Added Twitch creator **${login}**. Twitch live-stream checks are enabled.` : `Added Twitch creator **${login}**. Twitch live checks are paused until TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET are configured in the Cloudflare Worker.`);
     }
     await env.DB.prepare("DELETE FROM creators WHERE twitch_login=?").bind(login).run();
@@ -522,6 +523,8 @@ async function refreshTwitchCreators(env) {
       for (const user of (users.data || [])) {
         if (user.profile_image_url) await env.DB.prepare("INSERT INTO bot_config(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=CURRENT_TIMESTAMP")
           .bind("twitch_avatar_"+user.login.toLowerCase(),user.profile_image_url).run();
+        if (user.display_name) await env.DB.prepare("INSERT INTO bot_config(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=CURRENT_TIMESTAMP")
+          .bind("twitch_display_name_"+user.login.toLowerCase(),user.display_name).run();
       }
     }
   }
