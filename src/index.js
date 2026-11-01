@@ -286,7 +286,7 @@ async function handle(interaction, env) {
     if (!/^[a-z0-9_]{1,25}$/.test(login)) return respond("Enter a valid Twitch username.");
     if (args.add) {
       await env.DB.prepare("INSERT OR IGNORE INTO creators(twitch_login,added_by) VALUES(?,?)").bind(login,userId).run();
-      return respond(`Added Twitch creator **${login}**. Live-stream detection requires Twitch credentials on the Worker.`);
+      return respond(env.TWITCH_CLIENT_ID && env.TWITCH_CLIENT_SECRET ? `Added Twitch creator **${login}**. Twitch live-stream checks are enabled.` : `Added Twitch creator **${login}**. Twitch live checks are paused until TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET are configured in the Cloudflare Worker.`);
     }
     await env.DB.prepare("DELETE FROM creators WHERE twitch_login=?").bind(login).run();
     return respond(`Removed Twitch creator **${login}**.`);
