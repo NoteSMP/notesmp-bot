@@ -390,7 +390,7 @@ async function syncDiscordEvents(env) {
       try { const channel = await discordApi(env, `/channels/${event.channel_id}`); channelName = channel?.name || null; } catch {}
     }
     const eventData = {
-      eventId:event.id,
+      eventId:event.id,coverImage:event.cover_image || null,
       scheduledStartTime:event.scheduled_start_time,scheduledEndTime:event.scheduled_end_time,
       entityType:event.entity_type,location:event.entity_metadata?.location || null,
       channelId:event.channel_id || null,channelName,guildId:env.ALLOWED_GUILD_ID,
