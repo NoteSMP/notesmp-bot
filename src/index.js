@@ -582,8 +582,9 @@ export default {
         body: JSON.stringify(REGISTERED_COMMANDS)
       });
       if (!discordResponse.ok) {
-        console.error("Command registration rejected by Discord:", discordResponse.status);
-        return json({ error: "Discord rejected command registration", status: discordResponse.status }, 502);
+        const details = await discordResponse.text();
+        console.error("Command registration rejected by Discord:", discordResponse.status, details);
+        return json({ error: "Discord rejected command registration", status: discordResponse.status, details }, 502);
       }
       const registered = await discordResponse.json();
       return new Response(JSON.stringify({ ok: true, registered: registered.length, commands: registered.map(command => command.name) }), {
