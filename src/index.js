@@ -32,7 +32,7 @@ const REGISTERED_COMMANDS = [
     { type: 3, name: "gallery_category", description: "Gallery section", required: true, choices: ["events","buildings","places","inprogress"].map(value => ({ name: value, value })) },
     { type: 3, name: "title", description: "Website post title", required: false },
     { type: 3, name: "subtitle", description: "Website post subtitle", required: false },
-    { type: 3, name: "dimension", description: "Minecraft dimension", required: false, choices: ["overworld","nether","end"].map(value => ({ name: value, value })) },
+    { type: 3, name: "dimension", description: "Minecraft dimension", required: true, choices: ["overworld","nether","end"].map(value => ({ name: value, value })) },
     { type: 3, name: "coordinates", description: "Coordinates, e.g. 120, 64, -30", required: false }
   ] },
   { name: "post", description: "Manage published website posts", options: [
@@ -150,7 +150,7 @@ function messageImages(message) {
 }
 function parseCoordinates(value) {
   if (typeof value !== "string" || !value.trim()) return null;
-  const parts = value.trim().match(/-?\\d+(?:\\.\\d+)?/g);
+  const parts = value.trim().match(/-?\d+(?:\.\d+)?/g);
   if (!parts || parts.length !== 3) return null;
   const [x, y, z] = parts.map(Number);
   if (![x, y, z].every(Number.isFinite)) return null;
