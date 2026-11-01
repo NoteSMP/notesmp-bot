@@ -30,9 +30,9 @@ const REGISTERED_COMMANDS = [
   { name: "publish", description: "Publish a Discord message to the NoteSMP website", options: [
     { type: 3, name: "message_id", description: "ID of the Discord message to publish", required: true },
     { type: 3, name: "gallery_category", description: "Gallery section", required: true, choices: ["events","buildings","places","inprogress"].map(value => ({ name: value, value })) },
+    { type: 3, name: "dimension", description: "Minecraft dimension", required: true, choices: [{ name: "Overworld", value: "overworld" }, { name: "Nether", value: "nether" }, { name: "The End", value: "end" }] },
     { type: 3, name: "title", description: "Website post title", required: false },
     { type: 3, name: "subtitle", description: "Website post subtitle", required: false },
-    { type: 3, name: "dimension", description: "Minecraft dimension", required: true, choices: [{ name: "Overworld", value: "overworld" }, { name: "Nether", value: "nether" }, { name: "The End", value: "end" }] },
     { type: 3, name: "coordinates", description: "Coordinates, e.g. 120, 64, -30", required: false }
   ] },
   { name: "post", description: "Manage published website posts", options: [
