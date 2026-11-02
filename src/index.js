@@ -1371,7 +1371,15 @@ async function syncDiscordEvents(env) {
     const images = coverUrl ? [coverUrl] : [];
     let channelName = null;
     if (event.channel_id) {
-      try { const channel = await discordApi(env, `/channels/${event.channel_id}`); channelName = channel?.name || null; } catch {}
+      try {
+        const channel = await discordApi(env, `/channels/${event.channel_id}`);
+        channelName = channel?.name || null;
+      } catch {
+        // Scheduled-event metadata still contains the channel ID even when the
+        // bot cannot view that channel. Keep a useful linked fallback in the
+        // website event card rather than dropping the venue entirely.
+      }
+      if (!channelName) channelName = "Discord channel";
     }
     const eventData = {
       id:event.id,eventId:event.id,coverImage:coverUrl,coverHash,
