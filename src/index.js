@@ -5,79 +5,802 @@
 const encoder = new TextEncoder();
 
 const REGISTERED_COMMANDS = [
-  { name: "help", description: "Show NoteSMP bot help" },
-  { name: "access", description: "Manage authorized website administrators", options: [
-    { type: 1, name: "add", description: "Grant access to a Discord user or role", options: [{ type: 9, name: "target", description: "User or role to authorize", required: true }] },
-    { type: 1, name: "remove", description: "Remove access from a Discord user or role", options: [{ type: 9, name: "target", description: "User or role to remove", required: true }] },
-    { type: 1, name: "list", description: "List authorized users and roles" }
-  ] },
-  { name: "link", description: "Manage website links", options: [
-    { type: 1, name: "set", description: "Set a website link", options: [
-      { type: 3, name: "key", description: "Which link", required: true, choices: ["discord","youtube","modpack","bluemap"].map(value => ({ name: value, value })) },
-      { type: 3, name: "url", description: "Full http(s) URL", required: true }
-    ] },
-    { type: 1, name: "unset", description: "Remove a website link", options: [
-      { type: 3, name: "key", description: "Which link", required: true, choices: ["discord","youtube","modpack","bluemap"].map(value => ({ name: value, value })) }
-    ] }
-  ] },
-  { name: "sync", description: "Enable automatic website publishing from a channel", options: [
-    { type: 3, name: "category", description: "Content category", required: true, choices: [{ name: "rules", value: "rules" }, { name: "updates", value: "updates" }] },
-    { type: 7, name: "channel", description: "Discord source channel", required: true }
-  ] },
-  { name: "unsync", description: "Disable automatic website publishing", options: [
-    { type: 3, name: "category", description: "Content category", required: true, choices: [{ name: "rules", value: "rules" }, { name: "updates", value: "updates" }] }
-  ] },
-  { name: "publish", description: "Publish a Discord message to the NoteSMP website", options: [
-    { type: 3, name: "message_id", description: "ID of the Discord message to publish", required: true },
-    { type: 3, name: "gallery_category", description: "Gallery section", required: true, choices: ["events","buildings","places","inprogress"].map(value => ({ name: value, value })) },
-    { type: 3, name: "dimension", description: "Minecraft dimension", required: true, choices: [{ name: "Overworld", value: "overworld" }, { name: "Nether", value: "nether" }, { name: "The End", value: "end" }] },
-    { type: 3, name: "title", description: "Website post title", required: false },
-    { type: 3, name: "subtitle", description: "Website post subtitle", required: false },
-    { type: 3, name: "coordinates", description: "Coordinates, e.g. 120, 64, -30", required: false }
-  ] },
-  { name: "post", description: "Manage published website posts", options: [
-    { type: 1, name: "remove", description: "Remove a published post", options: [{ type: 3, name: "post_id", description: "Six-digit post ID", required: true }] },
-    { type: 1, name: "update", description: "Refresh only synced rules or updates posts", options: [{ type: 3, name: "post_id", description: "Six-digit post ID", required: true }] },
-    { type: 1, name: "modify", description: "Edit a gallery post without refreshing its Discord source", options: [
-      { type: 3, name: "post_id", description: "Six-digit gallery post ID", required: true },
-      { type: 3, name: "title", description: "Gallery title", required: true },
-      { type: 3, name: "subtitle", description: "Gallery subtitle", required: true },
-      { type: 3, name: "category", description: "Gallery section", required: true, choices: ["events","buildings","places","inprogress"].map(value => ({ name: value, value })) },
-      { type: 3, name: "dimension", description: "Minecraft dimension", required: true, choices: ["overworld","nether","end"].map(value => ({ name: value, value })) },
-      { type: 3, name: "coordinates", description: "Coordinates, e.g. 120, 64, -30", required: false }
-    ] }
-  ] },
-  { name: "creator", description: "Manage NoteSMP creators", options: [
-    { type: 1, name: "add", description: "Add a Twitch creator", options: [{ type: 3, name: "twitchname", description: "Twitch username", required: true }] },
-    { type: 1, name: "remove", description: "Remove a Twitch creator", options: [{ type: 3, name: "twitchname", description: "Twitch username", required: true }] }
-  ] },
-  { name: "verify", description: "Generate a Minecraft account-linking code", options: [{ type: 3, name: "playername", description: "Your exact Minecraft username", required: true }] },
-  { name: "unverify", description: "Unlink a Discord and Minecraft account", options: [
-    { type: 6, name: "discord_user", description: "Discord account", required: true },
-    { type: 3, name: "minecraft_uuid", description: "Minecraft UUID", required: true }
-  ] },
-  { name: "playerstats", description: "View public Minecraft player statistics", options: [
-    { type: 3, name: "playername", description: "Minecraft username", required: false },
-    { type: 6, name: "discord_user", description: "Linked Discord account", required: false },
-    { type: 3, name: "stat", description: "Minecraft statistic ID, e.g. minecraft:mob_kills", required: false }
-  ] },
-  { name: "news", description: "Manage website News", options: [
-    { type: 2, name: "set", description: "Publish a News post", options: [
-      { type: 1, name: "maintenance", description: "Schedule maintenance", options: [
-        { type: 3, name: "reason", description: "Maintenance reason", required: true },
-        { type: 3, name: "timestamp", description: "10-digit Unix timestamp (seconds), optional", required: false },
-        { type: 3, name: "duration", description: "Duration such as 2h or 1d4h30m, optional", required: false }
-      ] },
-      { type: 1, name: "warning", description: "Set a warning", options: [{ type: 3, name: "title", description: "News title", required: true }, { type: 3, name: "subtitle", description: "News subtitle", required: true }] },
-      { type: 1, name: "info", description: "Set an info post", options: [{ type: 3, name: "title", description: "News title", required: true }, { type: 3, name: "subtitle", description: "News subtitle", required: true }] }
-    ] },
-    { type: 2, name: "unset", description: "Remove the active News post", options: [
-      { type: 1, name: "remove", description: "Remove the active News post" }
-    ] }
-  ] },
-  { name: "serverstatus", description: "Manage the live Discord server status message", options: [
-    { type: 1, name: "sendmessage", description: "Create or replace the status message", options: [{ type: 7, name: "channel", description: "Channel for the status embed", required: true }] }
-  ] }
+  {
+    "name": "help",
+    "description": "Show NoteSMP bot help"
+  },
+  {
+    "name": "creator",
+    "description": "Manage NoteSMP creators",
+    "options": [
+      {
+        "type": 1,
+        "name": "add",
+        "description": "Add a Twitch creator",
+        "options": [
+          {
+            "type": 3,
+            "name": "twitchname",
+            "description": "Twitch username",
+            "required": true
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "name": "remove",
+        "description": "Remove a Twitch creator",
+        "options": [
+          {
+            "type": 3,
+            "name": "twitchname",
+            "description": "Twitch username",
+            "required": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "verify",
+    "description": "Generate a Minecraft account-linking code",
+    "options": [
+      {
+        "type": 3,
+        "name": "playername",
+        "description": "Your exact Minecraft username",
+        "required": true
+      }
+    ]
+  },
+  {
+    "name": "unverify",
+    "description": "Unlink a Discord and Minecraft account",
+    "options": [
+      {
+        "type": 6,
+        "name": "discord_user",
+        "description": "Discord account",
+        "required": true
+      },
+      {
+        "type": 3,
+        "name": "minecraft_uuid",
+        "description": "Minecraft UUID",
+        "required": true
+      }
+    ]
+  },
+  {
+    "name": "playerstats",
+    "description": "View public Minecraft player statistics",
+    "options": [
+      {
+        "type": 3,
+        "name": "playername",
+        "description": "Minecraft username",
+        "required": false
+      },
+      {
+        "type": 6,
+        "name": "discord_user",
+        "description": "Linked Discord account",
+        "required": false
+      },
+      {
+        "type": 3,
+        "name": "stat",
+        "description": "Minecraft statistic ID, e.g. minecraft:mob_kills",
+        "required": false
+      }
+    ]
+  },
+  {
+    "name": "serverstatus",
+    "description": "Manage the live Discord server status message",
+    "options": [
+      {
+        "type": 1,
+        "name": "sendmessage",
+        "description": "Create or replace the status message",
+        "options": [
+          {
+            "type": 7,
+            "name": "channel",
+            "description": "Channel for the status embed",
+            "required": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "ws",
+    "description": "Manage NoteSMP website",
+    "options": [
+      {
+        "type": 1,
+        "name": "access",
+        "description": "Manage administrator access",
+        "options": [
+          {
+            "type": 1,
+            "name": "add",
+            "description": "Grant access",
+            "options": [
+              {
+                "type": 9,
+                "name": "target",
+                "description": "User or role",
+                "required": true
+              }
+            ]
+          },
+          {
+            "type": 1,
+            "name": "remove",
+            "description": "Remove access",
+            "options": [
+              {
+                "type": 9,
+                "name": "target",
+                "description": "User or role",
+                "required": true
+              }
+            ]
+          },
+          {
+            "type": 1,
+            "name": "list",
+            "description": "List access",
+            "options": []
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "name": "link",
+        "description": "Manage website links",
+        "options": [
+          {
+            "type": 1,
+            "name": "set",
+            "description": "Set link",
+            "options": [
+              {
+                "type": 3,
+                "name": "key",
+                "description": "Link key",
+                "required": true,
+                "choices": [
+                  {
+                    "name": "discord",
+                    "value": "discord"
+                  },
+                  {
+                    "name": "youtube",
+                    "value": "youtube"
+                  },
+                  {
+                    "name": "modpack",
+                    "value": "modpack"
+                  },
+                  {
+                    "name": "bluemap",
+                    "value": "bluemap"
+                  }
+                ]
+              },
+              {
+                "type": 3,
+                "name": "url",
+                "description": "Full URL",
+                "required": true
+              }
+            ]
+          },
+          {
+            "type": 1,
+            "name": "unset",
+            "description": "Remove link",
+            "options": [
+              {
+                "type": 3,
+                "name": "key",
+                "description": "Link key",
+                "required": true,
+                "choices": [
+                  {
+                    "name": "discord",
+                    "value": "discord"
+                  },
+                  {
+                    "name": "youtube",
+                    "value": "youtube"
+                  },
+                  {
+                    "name": "modpack",
+                    "value": "modpack"
+                  },
+                  {
+                    "name": "bluemap",
+                    "value": "bluemap"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "name": "sync",
+        "description": "Enable channel sync",
+        "options": [
+          {
+            "type": 3,
+            "name": "category",
+            "description": "rules or updates",
+            "required": true,
+            "choices": [
+              {
+                "name": "rules",
+                "value": "rules"
+              },
+              {
+                "name": "updates",
+                "value": "updates"
+              }
+            ]
+          },
+          {
+            "type": 7,
+            "name": "channel",
+            "description": "Source channel",
+            "required": true
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "name": "unsync",
+        "description": "Disable channel sync",
+        "options": [
+          {
+            "type": 3,
+            "name": "category",
+            "description": "rules or updates",
+            "required": true,
+            "choices": [
+              {
+                "name": "rules",
+                "value": "rules"
+              },
+              {
+                "name": "updates",
+                "value": "updates"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": 2,
+        "name": "gallery",
+        "description": "Manage gallery",
+        "options": [
+          {
+            "type": 1,
+            "name": "add",
+            "description": "Add post",
+            "options": [
+              {
+                "type": 3,
+                "name": "gallery_category",
+                "description": "Gallery section",
+                "required": true,
+                "choices": [
+                  {
+                    "name": "events",
+                    "value": "events"
+                  },
+                  {
+                    "name": "buildings",
+                    "value": "buildings"
+                  },
+                  {
+                    "name": "places",
+                    "value": "places"
+                  },
+                  {
+                    "name": "inprogress",
+                    "value": "inprogress"
+                  }
+                ]
+              },
+              {
+                "type": 3,
+                "name": "message_id",
+                "description": "Discord message ID",
+                "required": true
+              },
+              {
+                "type": 3,
+                "name": "title",
+                "description": "Title",
+                "required": true
+              },
+              {
+                "type": 3,
+                "name": "subtitle",
+                "description": "Subtitle",
+                "required": false
+              },
+              {
+                "type": 3,
+                "name": "builders",
+                "description": "Comma-separated names/linked mentions",
+                "required": false
+              },
+              {
+                "type": 3,
+                "name": "dimension",
+                "description": "Dimension",
+                "required": false,
+                "choices": [
+                  {
+                    "name": "overworld",
+                    "value": "overworld"
+                  },
+                  {
+                    "name": "nether",
+                    "value": "nether"
+                  },
+                  {
+                    "name": "end",
+                    "value": "end"
+                  }
+                ]
+              },
+              {
+                "type": 3,
+                "name": "coordinates",
+                "description": "X, Y, Z",
+                "required": false
+              }
+            ]
+          },
+          {
+            "type": 1,
+            "name": "delete",
+            "description": "Delete post",
+            "options": [
+              {
+                "type": 3,
+                "name": "post_id",
+                "description": "Six-digit ID",
+                "required": true
+              }
+            ]
+          },
+          {
+            "type": 1,
+            "name": "move",
+            "description": "Move post",
+            "options": [
+              {
+                "type": 3,
+                "name": "post_id",
+                "description": "Six-digit ID",
+                "required": true
+              },
+              {
+                "type": 3,
+                "name": "gallery_category",
+                "description": "Destination",
+                "required": true,
+                "choices": [
+                  {
+                    "name": "events",
+                    "value": "events"
+                  },
+                  {
+                    "name": "buildings",
+                    "value": "buildings"
+                  },
+                  {
+                    "name": "places",
+                    "value": "places"
+                  },
+                  {
+                    "name": "inprogress",
+                    "value": "inprogress"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": 1,
+            "name": "modify",
+            "description": "Modify post; omitted optional fields clear",
+            "options": [
+              {
+                "type": 3,
+                "name": "post_id",
+                "description": "Six-digit ID",
+                "required": true
+              },
+              {
+                "type": 3,
+                "name": "title",
+                "description": "Nonempty title",
+                "required": false
+              },
+              {
+                "type": 3,
+                "name": "subtitle",
+                "description": "Subtitle",
+                "required": false
+              },
+              {
+                "type": 3,
+                "name": "builders",
+                "description": "Comma-separated names",
+                "required": false
+              },
+              {
+                "type": 3,
+                "name": "dimension",
+                "description": "Dimension",
+                "required": false,
+                "choices": [
+                  {
+                    "name": "overworld",
+                    "value": "overworld"
+                  },
+                  {
+                    "name": "nether",
+                    "value": "nether"
+                  },
+                  {
+                    "name": "end",
+                    "value": "end"
+                  }
+                ]
+              },
+              {
+                "type": 3,
+                "name": "coordinates",
+                "description": "X, Y, Z",
+                "required": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": 2,
+        "name": "events",
+        "description": "Manage events",
+        "options": [
+          {
+            "type": 1,
+            "name": "delete",
+            "description": "Delete post",
+            "options": [
+              {
+                "type": 3,
+                "name": "post_id",
+                "description": "Six-digit ID",
+                "required": true
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": 2,
+        "name": "updates",
+        "description": "Manage updates",
+        "options": [
+          {
+            "type": 1,
+            "name": "update",
+            "description": "Refetch source",
+            "options": [
+              {
+                "type": 3,
+                "name": "post_id",
+                "description": "Six-digit ID",
+                "required": true
+              }
+            ]
+          },
+          {
+            "type": 1,
+            "name": "delete",
+            "description": "Delete post",
+            "options": [
+              {
+                "type": 3,
+                "name": "post_id",
+                "description": "Six-digit ID",
+                "required": true
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": 2,
+        "name": "rules",
+        "description": "Manage rules",
+        "options": [
+          {
+            "type": 1,
+            "name": "update",
+            "description": "Refetch source",
+            "options": [
+              {
+                "type": 3,
+                "name": "post_id",
+                "description": "Six-digit ID",
+                "required": true
+              }
+            ]
+          },
+          {
+            "type": 1,
+            "name": "delete",
+            "description": "Delete post",
+            "options": [
+              {
+                "type": 3,
+                "name": "post_id",
+                "description": "Six-digit ID",
+                "required": true
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": 2,
+        "name": "maintenance",
+        "description": "Manage maintenance",
+        "options": [
+          {
+            "type": 1,
+            "name": "set",
+            "description": "Set banner",
+            "options": [
+              {
+                "type": 3,
+                "name": "reason",
+                "description": "Reason",
+                "required": true
+              },
+              {
+                "type": 3,
+                "name": "format",
+                "description": "Relative or Unix timestamp",
+                "required": true,
+                "choices": [
+                  {
+                    "name": "relative",
+                    "value": "relative"
+                  },
+                  {
+                    "name": "timestamp",
+                    "value": "timestamp"
+                  }
+                ]
+              },
+              {
+                "type": 3,
+                "name": "duration",
+                "description": "1w2d5h34m55s or Unix seconds",
+                "required": true
+              }
+            ]
+          },
+          {
+            "type": 1,
+            "name": "remove",
+            "description": "Remove banner",
+            "options": []
+          }
+        ]
+      },
+      {
+        "type": 2,
+        "name": "warning",
+        "description": "Manage warnings",
+        "options": [
+          {
+            "type": 1,
+            "name": "add",
+            "description": "Add warning",
+            "options": [
+              {
+                "type": 3,
+                "name": "title",
+                "description": "Title",
+                "required": true
+              },
+              {
+                "type": 3,
+                "name": "subtitle",
+                "description": "Subtitle",
+                "required": false
+              },
+              {
+                "type": 3,
+                "name": "color",
+                "description": "Color",
+                "required": true,
+                "choices": [
+                  {
+                    "name": "orange",
+                    "value": "orange"
+                  },
+                  {
+                    "name": "red",
+                    "value": "red"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": 1,
+            "name": "modify",
+            "description": "Modify warning",
+            "options": [
+              {
+                "type": 3,
+                "name": "post_id",
+                "description": "Six-digit ID",
+                "required": true
+              },
+              {
+                "type": 3,
+                "name": "title",
+                "description": "Title",
+                "required": false
+              },
+              {
+                "type": 3,
+                "name": "subtitle",
+                "description": "Subtitle",
+                "required": false
+              },
+              {
+                "type": 3,
+                "name": "color",
+                "description": "Color",
+                "required": false,
+                "choices": [
+                  {
+                    "name": "orange",
+                    "value": "orange"
+                  },
+                  {
+                    "name": "red",
+                    "value": "red"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": 1,
+            "name": "remove",
+            "description": "Remove warning",
+            "options": [
+              {
+                "type": 3,
+                "name": "post_id",
+                "description": "Six-digit ID",
+                "required": true
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": 2,
+        "name": "info",
+        "description": "Manage info notices",
+        "options": [
+          {
+            "type": 1,
+            "name": "add",
+            "description": "Add notice",
+            "options": [
+              {
+                "type": 3,
+                "name": "title",
+                "description": "Title",
+                "required": true
+              },
+              {
+                "type": 3,
+                "name": "subtitle",
+                "description": "Subtitle",
+                "required": false
+              }
+            ]
+          },
+          {
+            "type": 1,
+            "name": "modify",
+            "description": "Modify notice",
+            "options": [
+              {
+                "type": 3,
+                "name": "post_id",
+                "description": "Six-digit ID",
+                "required": true
+              },
+              {
+                "type": 3,
+                "name": "title",
+                "description": "Title",
+                "required": false
+              },
+              {
+                "type": 3,
+                "name": "subtitle",
+                "description": "Subtitle",
+                "required": false
+              }
+            ]
+          },
+          {
+            "type": 1,
+            "name": "remove",
+            "description": "Remove notice",
+            "options": [
+              {
+                "type": 3,
+                "name": "post_id",
+                "description": "Six-digit ID",
+                "required": true
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "name": "hero",
+        "description": "Modify Info hero",
+        "options": [
+          {
+            "type": 1,
+            "name": "modify",
+            "description": "Set hero text",
+            "options": [
+              {
+                "type": 3,
+                "name": "title",
+                "description": "Title",
+                "required": true
+              },
+              {
+                "type": 3,
+                "name": "subtitle",
+                "description": "Subtitle",
+                "required": true
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
 ];
 
 
@@ -211,21 +934,28 @@ function serverEmbed(status) {
 }
 
 async function handle(interaction, env) {
-  const command = interaction.data?.name;
-  const args = optionsMap(interaction.data?.options);
+  let command = interaction.data?.name;
+  let args = optionsMap(interaction.data?.options);
+  if (command === "ws") {
+    const top = interaction.data?.options?.[0];
+    const groupName = top?.type === 2 ? top.name : null;
+    const action = groupName ? top?.options?.[0] : top;
+    command = groupName ? `${groupName}.${action?.name || ""}` : (top?.name || "");
+    args = optionsMap(action?.options || top?.options || []);
+  }
   const userId = interaction.member?.user?.id || interaction.user?.id;
   if (command === "help") {
     return respond(null, true, { title: "NoteSMP Bot", description: "Event-driven bot connected. Use the available commands to manage NoteSMP." });
   }
-  if (command === "access") {
+  if (command === "access" || command === "access.add" || command === "access.remove" || command === "access.list") {
     if (!(await isOwner(env, userId))) return respond("Only the configured bot owner can manage access.");
-    const sub = args.add ? "add" : args.remove ? "remove" : "list";
+    const sub = command.startsWith("access.") ? command.split(".")[1] : args.add ? "add" : args.remove ? "remove" : "list";
     if (sub === "list") {
       const rows = await env.DB.prepare("SELECT entry_type, discord_id FROM access_entries ORDER BY entry_type, discord_id").all();
       const lines = (rows.results || []).map(r => r.entry_type === "user" ? `User: <@${r.discord_id}>` : `Role: <@&${r.discord_id}>`);
       return respond(lines.length ? lines.join("\n") : "No additional access entries are configured.");
     }
-    const target = args[sub]?.target;
+    const target = args.target ?? args[sub]?.target;
     if (!target) return respond("Select a user or role.");
     const id = target?.id || target;
     const resolved = interaction.data?.resolved || {};
@@ -301,6 +1031,96 @@ async function handle(interaction, env) {
       return respond(null,true,{title:"Gallery post modified",description:`Gallery post **${id}** was edited. Its Discord source, body, and images were left unchanged.`,fields:[{name:"Category",value:category,inline:true},{name:"Dimension",value:dimension,inline:true},{name:"Coordinates",value:displayCoordinates(coordinates),inline:false}]});
     }
     return respond("Choose remove, update, or modify.");
+  }
+  if (command.startsWith("gallery.") || ["events.delete","updates.update","updates.delete","rules.update","rules.delete","maintenance.set","maintenance.remove","warning.add","warning.modify","warning.remove","info.add","info.modify","info.remove","hero.modify"].includes(command)) {
+    if (!(await hasAdminAccess(env, interaction))) return respond("You don’t have permission to manage website content.");
+    const validId = id => /^\d{6}$/.test(String(id || ""));
+    const postById = async id => validId(id) ? env.DB.prepare("SELECT * FROM published_posts WHERE six_digit_id=?").bind(String(id)).first() : null;
+    const saveNotice = async (kind,title,subtitle,color,expiryAt=null) => {
+      const pid=crypto.randomUUID(), six=await nextSixDigitId(env);
+      const data={type:kind,color:color|| (kind==="info"?"turquoise":kind==="maintenance"?"red":"orange"),...(expiryAt?{expiryAt}:{})};
+      await env.DB.prepare("INSERT INTO published_posts(post_id,six_digit_id,category,group_name,source_guild_id,source_channel_id,source_message_id,author_discord_id,title,subtitle,body,image_urls_json,event_data_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)")
+        .bind(pid,six,"news",kind,interaction.guild_id||"guild",interaction.channel_id||"website",kind+"-"+pid,userId,title,subtitle||"",subtitle||"","[]",JSON.stringify(data)).run();
+      return six;
+    };
+    if (command==="gallery.add") {
+      const category=args.gallery_category,title=cleanText(args.title,180).trim(),messageId=cleanText(args.message_id,30);
+      if(!["events","buildings","places","inprogress"].includes(category)||!title||!/^\d{17,20}$/.test(messageId)) return respond("Choose a gallery category, provide a nonempty title, and a valid Discord message ID.");
+      const message=await fetchSourceMessage(env,interaction.channel_id,messageId);
+      const subtitle=cleanText(args.subtitle,240).trim(),dimension=args.dimension||null,coords=args.coordinates?parseCoordinates(args.coordinates):null;
+      if(args.coordinates&&!coords) return respond("Coordinates must contain exactly three numbers, e.g. 120, 64, -30.");
+      const builders=[];
+      for(const raw of cleanText(args.builders,500).split(",").map(x=>x.trim()).filter(Boolean)){
+        const mention=raw.match(/^<@!?(\d+)>$/);
+        if(mention){const linked=await env.DB.prepare("SELECT minecraft_name FROM account_links WHERE discord_user_id=?").bind(mention[1]).first();if(!linked)return respond(`Discord user <@${mention[1]}> has no linked Minecraft account.`);builders.push(linked.minecraft_name);}
+        else builders.push(raw.replace(/^@/,""));
+      }
+      const six=await nextSixDigitId(env),pid=crypto.randomUUID(),ev={galleryGroup:category,dimension,coordinates:coords,builders};
+      const linked=await env.DB.prepare("SELECT minecraft_uuid,minecraft_name FROM account_links WHERE discord_user_id=?").bind(message.author?.id||"").first();
+      await env.DB.prepare("INSERT INTO published_posts(post_id,six_digit_id,category,group_name,source_guild_id,source_channel_id,source_message_id,author_discord_id,linked_minecraft_uuid,linked_minecraft_name,title,subtitle,body,image_urls_json,event_data_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+       .bind(pid,six,"gallery",category,interaction.guild_id,interaction.channel_id,messageId,message.author?.id||null,linked?.minecraft_uuid||null,builders.join(", ")||linked?.minecraft_name||null,title,subtitle,cleanText(message.content,4000),JSON.stringify(messageImages(message)),JSON.stringify(ev)).run();
+      return respond(`Gallery post created. ID: **${six}**`);
+    }
+    if(command==="gallery.delete"||command==="events.delete"||command==="updates.delete"||command==="rules.delete"){
+      const row=await postById(args.post_id);if(!row)return respond("No post exists with that six-digit ID.");
+      const expected=command.split(".")[0];if(expected==="gallery"&&row.category!=="gallery"||expected!=="gallery"&&row.category!==expected)return respond("That ID does not belong to the selected post type.");
+      await env.DB.prepare("DELETE FROM published_posts WHERE post_id=?").bind(row.post_id).run();
+      return respond(`Deleted ${expected} post **${args.post_id}** from the website.`);
+    }
+    if(command==="gallery.move"){
+      const row=await postById(args.post_id);if(!row||row.category!=="gallery")return respond("Gallery post not found.");
+      if(!["events","buildings","places","inprogress"].includes(args.gallery_category))return respond("Invalid gallery category.");
+      let ev={};try{ev=JSON.parse(row.event_data_json||"{}")}catch{};ev.galleryGroup=args.gallery_category;
+      await env.DB.prepare("UPDATE published_posts SET group_name=?,event_data_json=?,updated_at=CURRENT_TIMESTAMP WHERE post_id=?").bind(args.gallery_category,JSON.stringify(ev),row.post_id).run();
+      return respond(`Moved gallery post **${args.post_id}** to **${args.gallery_category}**.`);
+    }
+    if(command==="gallery.modify"){
+      const row=await postById(args.post_id);if(!row||row.category!=="gallery")return respond("Gallery post not found.");
+      const title=Object.prototype.hasOwnProperty.call(args,"title")?cleanText(args.title,180).trim():row.title;
+      if(!title)return respond("Title cannot be empty. Supply a nonempty title.");
+      let ev={};try{ev=JSON.parse(row.event_data_json||"{}")}catch{};
+      const dimension=args.dimension||null,coordinates=args.coordinates?parseCoordinates(args.coordinates):null;
+      if(args.coordinates&&!coordinates)return respond("Coordinates must contain exactly three numbers.");
+      ev={...ev,dimension,coordinates,builders:cleanText(args.builders,500).split(",").map(x=>x.trim()).filter(Boolean)};
+      await env.DB.prepare("UPDATE published_posts SET title=?,subtitle=?,linked_minecraft_name=?,event_data_json=?,updated_at=CURRENT_TIMESTAMP WHERE post_id=?").bind(title,cleanText(args.subtitle,240).trim(),ev.builders.join(", ")||null,JSON.stringify(ev),row.post_id).run();
+      return respond(`Modified gallery post **${args.post_id}**. Omitted subtitle/builders/dimension/coordinates were cleared.`);
+    }
+    if(command==="updates.update"||command==="rules.update"){
+      const row=await postById(args.post_id),kind=command.split(".")[0];if(!row||row.category!==kind)return respond(`No ${kind} post found for that ID.`);
+      const message=await fetchSourceMessage(env,row.source_channel_id,row.source_message_id);
+      await env.DB.prepare("UPDATE published_posts SET body=?,image_urls_json=?,author_discord_id=?,updated_at=CURRENT_TIMESTAMP WHERE post_id=?").bind(cleanText(message.content,4000),JSON.stringify(messageImages(message)),message.author?.id||null,row.post_id).run();
+      return respond(`Refetched ${kind} post **${args.post_id}** from Discord.`);
+    }
+    if(command==="maintenance.remove"){
+      await env.DB.prepare("DELETE FROM published_posts WHERE category='news' AND group_name='maintenance'").run();return respond("Maintenance banner removed.");
+    }
+    if(command==="maintenance.set"){
+      const reason=cleanText(args.reason,240).trim(),format=args.format,raw=cleanText(args.duration,100).trim();let until=NaN;
+      if(format==="timestamp"&&/^\d{10}$/.test(raw))until=Number(raw)*1000;
+      if(format==="relative"){
+        const re=/(\d+)(w|d|h|m|s)/gi;let match,total=0,pos=0;while((match=re.exec(raw))){if(match.index!==pos)break;const mult={w:604800,d:86400,h:3600,m:60,s:1}[match[2].toLowerCase()];total+=Number(match[1])*mult;pos=re.lastIndex;}if(pos===raw.length&&pos>0&&total>0)until=Date.now()+total*1000;
+      }
+      if(!reason||!Number.isFinite(until)||until<=Date.now())return respond("Provide a reason and a future duration (1w2d5h34m55s) or 10-digit Unix timestamp.");
+      await env.DB.prepare("DELETE FROM published_posts WHERE category='news' AND group_name='maintenance'").run();
+      const six=await saveNotice("maintenance","Maintenance",reason,"red",new Date(until).toISOString());return respond(`Maintenance banner enabled. Post ID **${six}**.`);
+    }
+    if(command==="warning.add"||command==="info.add"){
+      const kind=command.split(".")[0],title=cleanText(args.title,180).trim();if(!title)return respond("Title cannot be empty.");
+      const color=kind==="info"?"turquoise":args.color;if(kind==="warning"&&!["orange","red"].includes(color))return respond("Choose orange or red.");
+      const six=await saveNotice(kind,title,cleanText(args.subtitle,240).trim(),color);return respond(`Added ${kind} notice **${six}**.`);
+    }
+    if(command==="warning.modify"||command==="info.modify"||command==="warning.remove"||command==="info.remove"){
+      const kind=command.split(".")[0],row=await postById(args.post_id);if(!row||row.category!=="news"||row.group_name!==kind)return respond(`No ${kind} notice found for that ID.`);
+      if(command.endsWith(".remove")){await env.DB.prepare("DELETE FROM published_posts WHERE post_id=?").bind(row.post_id).run();return respond(`Removed ${kind} notice **${args.post_id}**.`);}
+      const title=Object.prototype.hasOwnProperty.call(args,"title")?cleanText(args.title,180).trim():"",subtitle=Object.prototype.hasOwnProperty.call(args,"subtitle")?cleanText(args.subtitle,240).trim():"";
+      let ev={};try{ev=JSON.parse(row.event_data_json||"{}")}catch{};if(kind==="warning"&&args.color){if(!["orange","red"].includes(args.color))return respond("Choose orange or red.");ev.color=args.color;}
+      await env.DB.prepare("UPDATE published_posts SET title=?,subtitle=?,body=?,event_data_json=?,updated_at=CURRENT_TIMESTAMP WHERE post_id=?").bind(title,subtitle,subtitle,JSON.stringify(ev),row.post_id).run();
+      return respond(`Modified ${kind} notice **${args.post_id}**.`);
+    }
+    if(command==="hero.modify"){
+      await env.DB.prepare("INSERT INTO bot_config(key,value) VALUES('info_hero_title',?),('info_hero_subtitle',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=CURRENT_TIMESTAMP").bind(cleanText(args.title,180),cleanText(args.subtitle,240)).run();
+      return respond("Info tab hero text updated.");
+    }
   }
   if (command === "creator") {
     if (!(await hasAdminAccess(env, interaction))) return respond("You don’t have permission to manage creators.");
@@ -419,17 +1239,17 @@ async function handle(interaction, env) {
     return respond(`Server status embed created in <#${channelId}>. The Worker will refresh it automatically when its cron trigger is enabled.`);
   }
 
-  if (["link", "sync", "unsync"].includes(command)) {
+  if (["link", "sync", "unsync", "link.set", "link.unset"].includes(command)) {
     if (!(await hasAdminAccess(env, interaction))) return respond("You don’t have permission to manage website content.");
-    if (command === "link") {
-      if (args.set) {
-        const key = args.set.key;
-        const url = args.set.url;
+    if (command === "link" || command === "link.set" || command === "link.unset") {
+      if (command === "link.set" || args.set) {
+        const key = args.key ?? args.set?.key;
+        const url = args.url ?? args.set?.url;
         if (!["discord", "youtube", "modpack", "bluemap"].includes(key) || !/^https?:\/\//i.test(url || "")) return respond("Choose a supported link key and provide a valid http(s) URL.");
         await env.DB.prepare("INSERT INTO website_links(link_key,url,updated_by) VALUES(?,?,?) ON CONFLICT(link_key) DO UPDATE SET url=excluded.url,updated_by=excluded.updated_by,updated_at=CURRENT_TIMESTAMP").bind(key, url, userId).run();
         return respond(`Updated website link: **${key}**.`);
       }
-      const key = args.unset?.key;
+      const key = args.key ?? args.unset?.key;
       if (!["discord", "youtube", "modpack", "bluemap"].includes(key)) return respond("Choose discord, youtube, modpack, or bluemap.");
       await env.DB.prepare("DELETE FROM website_links WHERE link_key=?").bind(key).run();
       return respond(`Unset website link: **${key}**.`);
