@@ -941,8 +941,9 @@ async function handle(interaction, env) {
     const top = interaction.data?.options?.[0];
     const groupName = top?.type === 2 ? top.name : null;
     const action = groupName ? top?.options?.[0] : top;
-    command = groupName ? `${groupName}.${action?.name || ""}` : (top?.name || "");
-    args = optionsMap(action?.options || top?.options || []);
+    const nestedAction = !groupName && action?.options?.[0]?.type === 1 ? action.options[0] : null;
+    command = groupName ? `${groupName}.${action?.name || ""}` : nestedAction ? `${top.name}.${nestedAction.name}` : (top?.name || "");
+    args = optionsMap(nestedAction?.options || action?.options || top?.options || []);
   }
   const userId = interaction.member?.user?.id || interaction.user?.id;
   if (command === "help") {
@@ -1123,11 +1124,11 @@ async function handle(interaction, env) {
       return respond("Info tab hero text updated.");
     }
   }
-  if (command === "creator") {
+  if (command === "creator" || command.startsWith("creator.")) {
     if (!(await hasAdminAccess(env, interaction))) return respond("You don’t have permission to manage creators.");
-    const login = cleanText((args.add?.twitchname || args.remove?.twitchname || "").trim().toLowerCase(), 25);
+    const login = cleanText((args.twitchname || args.add?.twitchname || args.remove?.twitchname || "").trim().toLowerCase(), 25);
     if (!/^[a-z0-9_]{1,25}$/.test(login)) return respond("Enter a valid Twitch username.");
-    if (args.add) {
+    if (command === "creator.add" || args.add) {
       await env.DB.prepare("INSERT OR IGNORE INTO creators(twitch_login,added_by) VALUES(?,?)").bind(login,userId).run();
       if (env.TWITCH_CLIENT_ID && env.TWITCH_CLIENT_SECRET) await refreshTwitchCreators(env);
       return respond(env.TWITCH_CLIENT_ID && env.TWITCH_CLIENT_SECRET ? `Added Twitch creator **${login}**. Twitch live-stream checks are enabled.` : `Added Twitch creator **${login}**. Twitch live checks are paused until TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET are configured in the Cloudflare Worker.`);
