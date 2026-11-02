@@ -891,7 +891,7 @@ async function storeMessageImages(env, message, postId) {
     const contentType = (response.headers.get("content-type") || "").split(";")[0].toLowerCase();
     const extensionByType = { "image/jpeg": "jpg", "image/png": "png", "image/gif": "gif", "image/webp": "webp", "image/avif": "avif", "image/bmp": "bmp" };
     const extension = extensionByType[contentType] || (new URL(sourceUrl).pathname.match(/\.([a-z0-9]{2,5})$/i)?.[1]?.toLowerCase() || "img");
-    const path = `gallery/${postId}/image-${index + 1}.${extension}`;
+    const path = `gallery/${postId}/image-${index + 1}-${crypto.randomUUID()}.${extension}`;
     const bytes = new Uint8Array(await response.arrayBuffer());
     if (bytes.byteLength > 8 * 1024 * 1024) throw new Error("Gallery images must be 8 MB or smaller");
     let binary = "";
@@ -1061,6 +1061,7 @@ async function handle(interaction, env) {
       const linked = await env.DB.prepare("SELECT minecraft_uuid,minecraft_name FROM account_links WHERE discord_user_id=?").bind(message.author?.id || "").first();
       await env.DB.prepare("UPDATE published_posts SET body=?,image_urls_json=?,author_discord_id=?,linked_minecraft_uuid=?,linked_minecraft_name=?,updated_at=CURRENT_TIMESTAMP WHERE post_id=?")
         .bind(cleanText(message.content,4000),JSON.stringify(images),message.author?.id || null,linked?.minecraft_uuid || null,linked?.minecraft_name || null,row.post_id).run();
+      await deletePostImages(env, row);
       return respond(null, true, { title: "Synced post updated", description: `Rules/updates post **${id}** refreshed from its original Discord message.`, fields: [{name:"Images",value:String(images.length),inline:true}] });
     }
     if (args.modify) {
@@ -1153,6 +1154,7 @@ async function handle(interaction, env) {
       const row=await postById(args.post_id),kind=command.split(".")[0];if(!row||row.category!==kind)return respond(`No ${kind} post found for that ID.`);
       const message=await fetchSourceMessage(env,row.source_channel_id,row.source_message_id);
       await env.DB.prepare("UPDATE published_posts SET body=?,image_urls_json=?,author_discord_id=?,updated_at=CURRENT_TIMESTAMP WHERE post_id=?").bind(cleanText(message.content,4000),JSON.stringify(await storeMessageImages(env,message,row.post_id)),message.author?.id||null,row.post_id).run();
+      await deletePostImages(env, row);
       return respond(`Refetched ${kind} post **${args.post_id}** from Discord.`);
     }
     if(command==="maintenance.remove"){
