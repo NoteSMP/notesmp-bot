@@ -1065,7 +1065,12 @@ async function handle(interaction, env) {
     }
     if(command==="gallery.delete"||command==="events.delete"||command==="updates.delete"||command==="rules.delete"){
       const row=await postById(args.post_id);if(!row)return respond("No post exists with that six-digit ID.");
-      const expected=command.split(".")[0];if(expected==="gallery"&&row.category!=="gallery"||expected!=="gallery"&&row.category!==expected)return respond("That ID does not belong to the selected post type.");
+      const expected=command.split(".")[0];
+      const validType = expected==="gallery" ? row.category==="gallery" : expected==="events" ? (row.category==="events" || (row.category==="gallery"&&row.group_name==="events")) : row.category===expected;
+      if(!validType)return respond("That ID does not belong to the selected post type.");
+      if(expected==="events"&&row.category==="events"&&row.source_channel_id==="discord-event") {
+        await env.DB.prepare("INSERT INTO bot_config(key,value) VALUES(?, 'deleted') ON CONFLICT(key) DO UPDATE SET value='deleted',updated_at=CURRENT_TIMESTAMP").bind("deleted_discord_event_"+row.source_message_id).run();
+      }
       await env.DB.prepare("DELETE FROM published_posts WHERE post_id=?").bind(row.post_id).run();
       return respond(`Deleted ${expected} post **${args.post_id}** from the website.`);
     }
@@ -1294,6 +1299,8 @@ async function syncDiscordEvents(env) {
       channelId:event.channel_id || null,channelName,guildId:env.ALLOWED_GUILD_ID,
       userCount:event.user_count || 0,status:event.status,creatorId:event.creator_id
     };
+    const deleted = await env.DB.prepare("SELECT value FROM bot_config WHERE key=?").bind("deleted_discord_event_"+event.id).first();
+    if (deleted?.value === "deleted") continue;
     const existing = await env.DB.prepare("SELECT post_id FROM published_posts WHERE source_guild_id=? AND source_channel_id=? AND source_message_id=? AND category='events'").bind(env.ALLOWED_GUILD_ID,channelId,event.id).first();
     if (existing) {
       await env.DB.prepare("UPDATE published_posts SET title=?,body=?,image_urls_json=?,event_data_json=?,updated_at=CURRENT_TIMESTAMP WHERE post_id=?")
