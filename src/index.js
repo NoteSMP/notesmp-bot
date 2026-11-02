@@ -1307,6 +1307,11 @@ async function syncDiscordEvents(env) {
 
   for (const event of eventsById.values()) {
     const channelId = "discord-event";
+    // Discord status 3 = completed and 4 = cancelled. Both are terminal
+    // for the website feed: keep the event in Past events as "Ended".
+    const terminalStatus = Number(event.status) === 3 || Number(event.status) === 4;
+    const websiteStatus = terminalStatus ? 3 : Number(event.status);
+
     const coverHash = typeof event.image === "string" ? event.image : typeof event.cover_image === "string" ? event.cover_image : null;
     const coverExtension = coverHash?.startsWith("a_") ? "gif" : "png";
     const coverUrl = coverHash ? `https://cdn.discordapp.com/guild-events/${event.id}/${coverHash}.${coverExtension}?size=1024` : null;
@@ -1320,7 +1325,9 @@ async function syncDiscordEvents(env) {
       scheduledStartTime:event.scheduled_start_time,scheduledEndTime:event.scheduled_end_time,
       entityType:event.entity_type,location:event.entity_metadata?.location || null,
       channelId:event.channel_id || null,channelName,guildId:env.ALLOWED_GUILD_ID,
-      userCount:event.user_count || 0,status:event.status,creatorId:event.creator_id
+      userCount:event.user_count || 0,status:websiteStatus,
+      statusText:terminalStatus ? "ended" : (Number(event.status) === 2 ? "started" : "scheduled"),
+      creatorId:event.creator_id
     };
     const deleted = await env.DB.prepare("SELECT value FROM bot_config WHERE key=?").bind("deleted_discord_event_" + event.id).first();
     if (deleted?.value === "deleted") continue;
