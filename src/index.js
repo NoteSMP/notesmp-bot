@@ -1060,7 +1060,7 @@ async function handle(interaction, env) {
       const six=await nextSixDigitId(env),pid=crypto.randomUUID(),ev={galleryGroup:category,dimension,coordinates:coords,builders};
       const linked=await env.DB.prepare("SELECT minecraft_uuid,minecraft_name FROM account_links WHERE discord_user_id=?").bind(message.author?.id||"").first();
       await env.DB.prepare("INSERT INTO published_posts(post_id,six_digit_id,category,group_name,source_guild_id,source_channel_id,source_message_id,author_discord_id,linked_minecraft_uuid,linked_minecraft_name,title,subtitle,body,image_urls_json,event_data_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-       .bind(pid,six,"gallery",category,interaction.guild_id,interaction.channel_id,messageId,message.author?.id||null,linked?.minecraft_uuid||null,builders.join(", ")||linked?.minecraft_name||null,title,subtitle,cleanText(message.content,4000),JSON.stringify(messageImages(message)),JSON.stringify(ev)).run();
+       .bind(pid,six,"gallery",category,interaction.guild_id,interaction.channel_id,messageId,message.author?.id||null,linked?.minecraft_uuid||null,builders.join(", ")||null,title,subtitle,cleanText(message.content,4000),JSON.stringify(messageImages(message)),JSON.stringify(ev)).run();
       return respond(`Gallery post created. ID: **${six}**`);
     }
     if(command==="gallery.delete"||command==="events.delete"||command==="updates.delete"||command==="rules.delete"){
@@ -1088,8 +1088,14 @@ async function handle(interaction, env) {
       let ev={};try{ev=JSON.parse(row.event_data_json||"{}")}catch{};
       const dimension=args.dimension||null,coordinates=args.coordinates?parseCoordinates(args.coordinates):null;
       if(args.coordinates&&!coordinates)return respond("Coordinates must contain exactly three numbers.");
-      ev={...ev,dimension,coordinates,builders:cleanText(args.builders,500).split(",").map(x=>x.trim()).filter(Boolean)};
-      await env.DB.prepare("UPDATE published_posts SET title=?,subtitle=?,linked_minecraft_name=?,event_data_json=?,updated_at=CURRENT_TIMESTAMP WHERE post_id=?").bind(title,cleanText(args.subtitle,240).trim(),ev.builders.join(", ")||null,JSON.stringify(ev),row.post_id).run();
+      const builders=[];
+      for(const raw of cleanText(args.builders,500).split(",").map(x=>x.trim()).filter(Boolean)){
+        const mention=raw.match(/^<@!?(\d+)>$/);
+        if(mention){const linked=await env.DB.prepare("SELECT minecraft_name FROM account_links WHERE discord_user_id=?").bind(mention[1]).first();if(!linked)return respond(`Discord user <@${mention[1]}> has no linked Minecraft account.`);builders.push(linked.minecraft_name);}
+        else builders.push(raw.replace(/^@/,""));
+      }
+      ev={...ev,dimension,coordinates,builders};
+      await env.DB.prepare("UPDATE published_posts SET title=?,subtitle=?,linked_minecraft_name=?,event_data_json=?,updated_at=CURRENT_TIMESTAMP WHERE post_id=?").bind(title,cleanText(args.subtitle,240).trim(),builders.join(", ")||null,JSON.stringify(ev),row.post_id).run();
       return respond(`Modified gallery post **${args.post_id}**. Omitted subtitle/builders/dimension/coordinates were cleared.`);
     }
     if(command==="updates.update"||command==="rules.update"){
