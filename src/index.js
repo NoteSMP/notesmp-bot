@@ -1284,12 +1284,29 @@ async function handle(interaction, env) {
 
 async function syncDiscordEvents(env) {
   if (!env.DISCORD_BOT_TOKEN || !env.ALLOWED_GUILD_ID) return;
-  const events = await discordApi(env,`/guilds/${env.ALLOWED_GUILD_ID}/scheduled-events?with_user_count=true`);
-  for (const event of events || []) {
-    const postId = `discord-event-${event.id}`;
+
+  // Discord's guild event listing may omit completed events. Keep syncing events
+  // already published on the site by fetching their individual event records too.
+  const listed = await discordApi(env,`/guilds/${env.ALLOWED_GUILD_ID}/scheduled-events?with_user_count=true`);
+  const eventsById = new Map((listed || []).map(event => [String(event.id), event]));
+  const knownPosts = await env.DB.prepare(
+    "SELECT source_message_id,event_data_json FROM published_posts WHERE source_guild_id=? AND source_channel_id='discord-event' AND category='events'"
+  ).bind(env.ALLOWED_GUILD_ID).all();
+
+  for (const post of knownPosts.results || []) {
+    const eventId = String(post.source_message_id || "");
+    if (!eventId || eventsById.has(eventId)) continue;
+    try {
+      const event = await discordApi(env,`/guilds/${env.ALLOWED_GUILD_ID}/scheduled-events/${eventId}?with_user_count=true`);
+      if (event?.id) eventsById.set(String(event.id), event);
+    } catch (error) {
+      // Keep the last known record if Discord no longer exposes this event.
+      console.warn("Could not refresh completed Discord event", eventId, String(error?.message || error));
+    }
+  }
+
+  for (const event of eventsById.values()) {
     const channelId = "discord-event";
-    // Discord API payloads may expose the scheduled-event cover hash as "image"
-    // (newer API docs) or "cover_image" (older payloads/libraries).
     const coverHash = typeof event.image === "string" ? event.image : typeof event.cover_image === "string" ? event.cover_image : null;
     const coverExtension = coverHash?.startsWith("a_") ? "gif" : "png";
     const coverUrl = coverHash ? `https://cdn.discordapp.com/guild-events/${event.id}/${coverHash}.${coverExtension}?size=1024` : null;
@@ -1305,7 +1322,7 @@ async function syncDiscordEvents(env) {
       channelId:event.channel_id || null,channelName,guildId:env.ALLOWED_GUILD_ID,
       userCount:event.user_count || 0,status:event.status,creatorId:event.creator_id
     };
-    const deleted = await env.DB.prepare("SELECT value FROM bot_config WHERE key=?").bind("deleted_discord_event_"+event.id).first();
+    const deleted = await env.DB.prepare("SELECT value FROM bot_config WHERE key=?").bind("deleted_discord_event_" + event.id).first();
     if (deleted?.value === "deleted") continue;
     const existing = await env.DB.prepare("SELECT post_id FROM published_posts WHERE source_guild_id=? AND source_channel_id=? AND source_message_id=? AND category='events'").bind(env.ALLOWED_GUILD_ID,channelId,event.id).first();
     if (existing) {
@@ -1314,7 +1331,7 @@ async function syncDiscordEvents(env) {
     } else {
       const six = await nextSixDigitId(env);
       await env.DB.prepare("INSERT INTO published_posts(post_id,six_digit_id,category,source_guild_id,source_channel_id,source_message_id,title,body,image_urls_json,event_data_json) VALUES(?,?,?,?,?,?,?,?,?,?)")
-        .bind(postId,six,"events",env.ALLOWED_GUILD_ID,channelId,event.id,cleanText(event.name,180),cleanText(event.description,4000),JSON.stringify(images),JSON.stringify(eventData)).run();
+        .bind("discord-event-" + event.id,six,"events",env.ALLOWED_GUILD_ID,channelId,event.id,cleanText(event.name,180),cleanText(event.description,4000),JSON.stringify(images),JSON.stringify(eventData)).run();
     }
   }
 }
