@@ -879,6 +879,55 @@ async function nextSixDigitId(env) {
   }
   throw new Error("Could not allocate a unique post ID");
 }
+async function storeMessageImages(env, message, postId) {
+  const sourceUrls = messageImages(message);
+  if (!sourceUrls.length) return [];
+  if (!env.GITHUB_TOKEN) throw new Error("GITHUB_TOKEN is not configured on the bot Worker");
+  const saved = [];
+  for (let index = 0; index < sourceUrls.length; index++) {
+    const sourceUrl = sourceUrls[index];
+    const response = await fetch(sourceUrl);
+    if (!response.ok) throw new Error("Could not download an image attached to the Discord message");
+    const contentType = (response.headers.get("content-type") || "").split(";")[0].toLowerCase();
+    const extensionByType = { "image/jpeg": "jpg", "image/png": "png", "image/gif": "gif", "image/webp": "webp", "image/avif": "avif", "image/bmp": "bmp" };
+    const extension = extensionByType[contentType] || (new URL(sourceUrl).pathname.match(/\.([a-z0-9]{2,5})$/i)?.[1]?.toLowerCase() || "img");
+    const path = `gallery/${postId}/image-${index + 1}.${extension}`;
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength > 8 * 1024 * 1024) throw new Error("Gallery images must be 8 MB or smaller");
+    let binary = "";
+    for (let offset = 0; offset < bytes.length; offset += 0x8000) binary += String.fromCharCode(...bytes.subarray(offset, Math.min(offset + 0x8000, bytes.length)));
+    const upload = await fetch(`https://api.github.com/repos/NoteSMP/notesmp-ressources/contents/${path.split("/").map(encodeURIComponent).join("/")}`, {
+      method: "PUT",
+      headers: { "Authorization": `Bearer ${env.GITHUB_TOKEN}`, "Accept": "application/vnd.github+json", "Content-Type": "application/json", "X-GitHub-Api-Version": "2022-11-28" },
+      body: JSON.stringify({ message: `Store NoteSMP gallery image for post ${postId}`, content: btoa(binary) })
+    });
+    if (!upload.ok) throw new Error(`GitHub image storage failed (HTTP ${upload.status})`);
+    saved.push(`https://raw.githubusercontent.com/NoteSMP/notesmp-ressources/main/${path}`);
+  }
+  return saved;
+}
+async function deletePostImages(env, row) {
+  let urls = [];
+  try { urls = JSON.parse(row?.image_urls_json || "[]"); } catch {}
+  if (!Array.isArray(urls) || !urls.length || !env.GITHUB_TOKEN) return;
+  const all = await env.DB.prepare("SELECT image_urls_json FROM published_posts").all();
+  const referenced = new Set();
+  for (const item of all.results || []) {
+    try { for (const url of JSON.parse(item.image_urls_json || "[]")) referenced.add(url); } catch {}
+  }
+  for (const url of urls) {
+    if (referenced.has(url) || typeof url !== "string") continue;
+    const prefix = "https://raw.githubusercontent.com/NoteSMP/notesmp-ressources/main/";
+    if (!url.startsWith(prefix)) continue;
+    const path = url.slice(prefix.length);
+    const apiUrl = `https://api.github.com/repos/NoteSMP/notesmp-ressources/contents/${path.split("/").map(encodeURIComponent).join("/")}`;
+    const headers = { "Authorization": `Bearer ${env.GITHUB_TOKEN}`, "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" };
+    const file = await fetch(apiUrl, { headers });
+    if (!file.ok) continue;
+    const metadata = await file.json();
+    await fetch(apiUrl, { method: "DELETE", headers: { ...headers, "Content-Type": "application/json" }, body: JSON.stringify({ message: "Remove NoteSMP gallery image after post deletion", sha: metadata.sha }) });
+  }
+}
 function messageImages(message) {
   const urls = [];
   const imageExtensions = /\\.(?:png|jpe?g|gif|webp|avif|bmp)(?:$|[?#])/i;
@@ -982,7 +1031,7 @@ async function handle(interaction, env) {
     const sixDigitId = await nextSixDigitId(env);
     const linked = await env.DB.prepare("SELECT minecraft_uuid,minecraft_name FROM account_links WHERE discord_user_id=?").bind(message.author?.id || "").first();
     const body = cleanText(message.content, 4000);
-    const images = messageImages(message);
+    const images = await storeMessageImages(env, message, postId);
     const title = cleanText(args.title || "", 180) || null;
     const subtitle = cleanText(args.subtitle || "", 240) || null;
     const dimension = ["overworld", "nether", "end"].includes(String(args.dimension || "").toLowerCase()) ? String(args.dimension).toLowerCase() : null;
@@ -996,9 +1045,10 @@ async function handle(interaction, env) {
     if (!(await hasAdminAccess(env, interaction))) return respond("You don’t have permission to manage website posts.");
     if (args.remove) {
       const id = args.remove.post_id;
-      const row = await env.DB.prepare("SELECT post_id FROM published_posts WHERE six_digit_id=?").bind(id).first();
+      const row = await env.DB.prepare("SELECT * FROM published_posts WHERE six_digit_id=?").bind(id).first();
       if (!row) return respond("No published post has that six-digit ID.");
       await env.DB.prepare("DELETE FROM published_posts WHERE post_id=?").bind(row.post_id).run();
+      await deletePostImages(env, row);
       return respond(`Removed website post **${id}**.`);
     }
     if (args.update) {
@@ -1007,7 +1057,7 @@ async function handle(interaction, env) {
       if (!row) return respond("No published post has that six-digit ID.");
       if (!["rules", "updates"].includes(row.category)) return respond("Use /post modify for gallery posts. /post update only refreshes synced rules or updates.");
       const message = await fetchSourceMessage(env, row.source_channel_id, row.source_message_id);
-      const images = messageImages(message);
+      const images = await storeMessageImages(env, message, row.post_id);
       const linked = await env.DB.prepare("SELECT minecraft_uuid,minecraft_name FROM account_links WHERE discord_user_id=?").bind(message.author?.id || "").first();
       await env.DB.prepare("UPDATE published_posts SET body=?,image_urls_json=?,author_discord_id=?,linked_minecraft_uuid=?,linked_minecraft_name=?,updated_at=CURRENT_TIMESTAMP WHERE post_id=?")
         .bind(cleanText(message.content,4000),JSON.stringify(images),message.author?.id || null,linked?.minecraft_uuid || null,linked?.minecraft_name || null,row.post_id).run();
@@ -1060,7 +1110,7 @@ async function handle(interaction, env) {
       const six=await nextSixDigitId(env),pid=crypto.randomUUID(),ev={galleryGroup:category,dimension,coordinates:coords,builders};
       const linked=await env.DB.prepare("SELECT minecraft_uuid,minecraft_name FROM account_links WHERE discord_user_id=?").bind(message.author?.id||"").first();
       await env.DB.prepare("INSERT INTO published_posts(post_id,six_digit_id,category,group_name,source_guild_id,source_channel_id,source_message_id,author_discord_id,linked_minecraft_uuid,linked_minecraft_name,title,subtitle,body,image_urls_json,event_data_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-       .bind(pid,six,"gallery",category,interaction.guild_id,interaction.channel_id,messageId,message.author?.id||null,linked?.minecraft_uuid||null,builders.join(", ")||null,title,subtitle,cleanText(message.content,4000),JSON.stringify(messageImages(message)),JSON.stringify(ev)).run();
+       .bind(pid,six,"gallery",category,interaction.guild_id,interaction.channel_id,messageId,message.author?.id||null,linked?.minecraft_uuid||null,builders.join(", ")||null,title,subtitle,cleanText(message.content,4000),JSON.stringify(await storeMessageImages(env, message, pid)),JSON.stringify(ev)).run();
       return respond(`Gallery post created. ID: **${six}**`);
     }
     if(command==="gallery.delete"||command==="events.delete"||command==="updates.delete"||command==="rules.delete"){
@@ -1072,6 +1122,7 @@ async function handle(interaction, env) {
         await env.DB.prepare("INSERT INTO bot_config(key,value) VALUES(?, 'deleted') ON CONFLICT(key) DO UPDATE SET value='deleted',updated_at=CURRENT_TIMESTAMP").bind("deleted_discord_event_"+row.source_message_id).run();
       }
       await env.DB.prepare("DELETE FROM published_posts WHERE post_id=?").bind(row.post_id).run();
+      await deletePostImages(env, row);
       return respond(`Deleted ${expected} post **${args.post_id}** from the website.`);
     }
     if(command==="gallery.move"){
@@ -1101,7 +1152,7 @@ async function handle(interaction, env) {
     if(command==="updates.update"||command==="rules.update"){
       const row=await postById(args.post_id),kind=command.split(".")[0];if(!row||row.category!==kind)return respond(`No ${kind} post found for that ID.`);
       const message=await fetchSourceMessage(env,row.source_channel_id,row.source_message_id);
-      await env.DB.prepare("UPDATE published_posts SET body=?,image_urls_json=?,author_discord_id=?,updated_at=CURRENT_TIMESTAMP WHERE post_id=?").bind(cleanText(message.content,4000),JSON.stringify(messageImages(message)),message.author?.id||null,row.post_id).run();
+      await env.DB.prepare("UPDATE published_posts SET body=?,image_urls_json=?,author_discord_id=?,updated_at=CURRENT_TIMESTAMP WHERE post_id=?").bind(cleanText(message.content,4000),JSON.stringify(await storeMessageImages(env,message,row.post_id)),message.author?.id||null,row.post_id).run();
       return respond(`Refetched ${kind} post **${args.post_id}** from Discord.`);
     }
     if(command==="maintenance.remove"){
@@ -1353,7 +1404,7 @@ async function syncConfiguredChannels(env) {
     const ordered = (messages || []).slice().reverse();
     for (const message of ordered) {
       if (message.type !== 0 || !message.id) continue;
-      const images = messageImages(message);
+      const images = await storeMessageImages(env, message, `sync-${item.category}-${message.id}`);
       const six = await nextSixDigitId(env);
       await env.DB.prepare("INSERT OR IGNORE INTO published_posts(post_id,six_digit_id,category,source_guild_id,source_channel_id,source_message_id,author_discord_id,title,body,image_urls_json) VALUES(?,?,?,?,?,?,?,?,?,?)")
         .bind(`sync-${item.category}-${message.id}`,six,item.category,env.ALLOWED_GUILD_ID,item.channel_id,message.id,message.author?.id || null,null,cleanText(message.content,4000),JSON.stringify(images)).run();
