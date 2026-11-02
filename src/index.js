@@ -1285,23 +1285,31 @@ async function handle(interaction, env) {
 async function syncDiscordEvents(env) {
   if (!env.DISCORD_BOT_TOKEN || !env.ALLOWED_GUILD_ID) return;
 
-  // Discord's guild event listing may omit completed events. Keep syncing events
-  // already published on the site by fetching their individual event records too.
   const listed = await discordApi(env,`/guilds/${env.ALLOWED_GUILD_ID}/scheduled-events?with_user_count=true`);
   const eventsById = new Map((listed || []).map(event => [String(event.id), event]));
   const knownPosts = await env.DB.prepare(
-    "SELECT source_message_id,event_data_json FROM published_posts WHERE source_guild_id=? AND source_channel_id='discord-event' AND category='events'"
+    "SELECT post_id,source_message_id,event_data_json FROM published_posts WHERE source_guild_id=? AND source_channel_id='discord-event' AND category='events'"
   ).bind(env.ALLOWED_GUILD_ID).all();
 
+  // Refresh already-published events individually. When Discord no longer
+  // exposes an event in either endpoint, treat it as ended for the website.
   for (const post of knownPosts.results || []) {
     const eventId = String(post.source_message_id || "");
     if (!eventId || eventsById.has(eventId)) continue;
     try {
       const event = await discordApi(env,`/guilds/${env.ALLOWED_GUILD_ID}/scheduled-events/${eventId}?with_user_count=true`);
-      if (event?.id) eventsById.set(String(event.id), event);
+      if (event?.id) {
+        eventsById.set(String(event.id), event);
+        continue;
+      }
+      throw new Error("Discord returned no event record");
     } catch (error) {
-      // Keep the last known record if Discord no longer exposes this event.
-      console.warn("Could not refresh completed Discord event", eventId, String(error?.message || error));
+      console.warn("Discord no longer returns event; marking it ended", eventId, String(error?.message || error));
+      let prior = {};
+      try { prior = JSON.parse(post.event_data_json || "{}"); } catch {}
+      const endedData = { ...prior, id:eventId, eventId, status:3, statusText:"ended" };
+      await env.DB.prepare("UPDATE published_posts SET event_data_json=?,updated_at=CURRENT_TIMESTAMP WHERE post_id=?")
+        .bind(JSON.stringify(endedData), post.post_id).run();
     }
   }
 
