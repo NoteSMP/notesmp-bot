@@ -10,38 +10,6 @@ const REGISTERED_COMMANDS = [
     "description": "Show NoteSMP bot help"
   },
   {
-    "name": "creator",
-    "description": "Manage NoteSMP creators",
-    "options": [
-      {
-        "type": 1,
-        "name": "add",
-        "description": "Add a Twitch creator",
-        "options": [
-          {
-            "type": 3,
-            "name": "twitchname",
-            "description": "Twitch username",
-            "required": true
-          }
-        ]
-      },
-      {
-        "type": 1,
-        "name": "remove",
-        "description": "Remove a Twitch creator",
-        "options": [
-          {
-            "type": 3,
-            "name": "twitchname",
-            "description": "Twitch username",
-            "required": true
-          }
-        ]
-      }
-    ]
-  },
-  {
     "name": "verify",
     "description": "Generate a Minecraft account-linking code",
     "options": [
@@ -119,7 +87,7 @@ const REGISTERED_COMMANDS = [
     "description": "Manage NoteSMP website",
     "options": [
       {
-        "type": 1,
+        "type": 2,
         "name": "access",
         "description": "Manage administrator access",
         "options": [
@@ -158,7 +126,7 @@ const REGISTERED_COMMANDS = [
         ]
       },
       {
-        "type": 1,
+        "type": 2,
         "name": "link",
         "description": "Manage website links",
         "options": [
@@ -292,7 +260,7 @@ const REGISTERED_COMMANDS = [
           {
             "type": 1,
             "name": "add",
-            "description": "Add post",
+            "description": "Add gallery post",
             "options": [
               {
                 "type": 3,
@@ -339,7 +307,7 @@ const REGISTERED_COMMANDS = [
               {
                 "type": 3,
                 "name": "builders",
-                "description": "Comma-separated names/linked mentions",
+                "description": "Comma-separated builder names/linked mentions",
                 "required": false
               },
               {
@@ -373,7 +341,7 @@ const REGISTERED_COMMANDS = [
           {
             "type": 1,
             "name": "delete",
-            "description": "Delete post",
+            "description": "Delete gallery post",
             "options": [
               {
                 "type": 3,
@@ -386,7 +354,7 @@ const REGISTERED_COMMANDS = [
           {
             "type": 1,
             "name": "move",
-            "description": "Move post",
+            "description": "Move gallery post",
             "options": [
               {
                 "type": 3,
@@ -423,7 +391,7 @@ const REGISTERED_COMMANDS = [
           {
             "type": 1,
             "name": "modify",
-            "description": "Modify post; omitted optional fields clear",
+            "description": "Modify gallery post",
             "options": [
               {
                 "type": 3,
@@ -446,7 +414,7 @@ const REGISTERED_COMMANDS = [
               {
                 "type": 3,
                 "name": "builders",
-                "description": "Comma-separated names",
+                "description": "Comma-separated builders",
                 "required": false
               },
               {
@@ -507,7 +475,7 @@ const REGISTERED_COMMANDS = [
           {
             "type": 1,
             "name": "update",
-            "description": "Refetch source",
+            "description": "Refetch source message",
             "options": [
               {
                 "type": 3,
@@ -540,7 +508,7 @@ const REGISTERED_COMMANDS = [
           {
             "type": 1,
             "name": "update",
-            "description": "Refetch source",
+            "description": "Refetch source message",
             "options": [
               {
                 "type": 3,
@@ -573,7 +541,7 @@ const REGISTERED_COMMANDS = [
           {
             "type": 1,
             "name": "set",
-            "description": "Set banner",
+            "description": "Set maintenance banner",
             "options": [
               {
                 "type": 3,
@@ -584,7 +552,7 @@ const REGISTERED_COMMANDS = [
               {
                 "type": 3,
                 "name": "format",
-                "description": "Relative or Unix timestamp",
+                "description": "relative or timestamp",
                 "required": true,
                 "choices": [
                   {
@@ -608,7 +576,7 @@ const REGISTERED_COMMANDS = [
           {
             "type": 1,
             "name": "remove",
-            "description": "Remove banner",
+            "description": "Remove maintenance",
             "options": []
           }
         ]
@@ -616,7 +584,7 @@ const REGISTERED_COMMANDS = [
       {
         "type": 2,
         "name": "warning",
-        "description": "Manage warnings",
+        "description": "Manage warning notices",
         "options": [
           {
             "type": 1,
@@ -638,7 +606,7 @@ const REGISTERED_COMMANDS = [
               {
                 "type": 3,
                 "name": "color",
-                "description": "Color",
+                "description": "orange or red",
                 "required": true,
                 "choices": [
                   {
@@ -679,7 +647,7 @@ const REGISTERED_COMMANDS = [
               {
                 "type": 3,
                 "name": "color",
-                "description": "Color",
+                "description": "orange or red",
                 "required": false,
                 "choices": [
                   {
@@ -717,7 +685,7 @@ const REGISTERED_COMMANDS = [
           {
             "type": 1,
             "name": "add",
-            "description": "Add notice",
+            "description": "Add info notice",
             "options": [
               {
                 "type": 3,
@@ -736,7 +704,7 @@ const REGISTERED_COMMANDS = [
           {
             "type": 1,
             "name": "modify",
-            "description": "Modify notice",
+            "description": "Modify info notice",
             "options": [
               {
                 "type": 3,
@@ -761,7 +729,7 @@ const REGISTERED_COMMANDS = [
           {
             "type": 1,
             "name": "remove",
-            "description": "Remove notice",
+            "description": "Remove info notice",
             "options": [
               {
                 "type": 3,
@@ -774,14 +742,14 @@ const REGISTERED_COMMANDS = [
         ]
       },
       {
-        "type": 1,
+        "type": 2,
         "name": "hero",
-        "description": "Modify Info hero",
+        "description": "Manage Info hero",
         "options": [
           {
             "type": 1,
             "name": "modify",
-            "description": "Set hero text",
+            "description": "Modify hero text",
             "options": [
               {
                 "type": 3,
@@ -793,6 +761,39 @@ const REGISTERED_COMMANDS = [
                 "type": 3,
                 "name": "subtitle",
                 "description": "Subtitle",
+                "required": true
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": 2,
+        "name": "creator",
+        "description": "Manage creators",
+        "options": [
+          {
+            "type": 1,
+            "name": "add",
+            "description": "Add Twitch creator",
+            "options": [
+              {
+                "type": 3,
+                "name": "twitchname",
+                "description": "Twitch username",
+                "required": true
+              }
+            ]
+          },
+          {
+            "type": 1,
+            "name": "remove",
+            "description": "Remove Twitch creator",
+            "options": [
+              {
+                "type": 3,
+                "name": "twitchname",
+                "description": "Twitch username",
                 "required": true
               }
             ]
