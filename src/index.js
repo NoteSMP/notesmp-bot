@@ -1291,26 +1291,18 @@ async function syncDiscordEvents(env) {
     "SELECT post_id,source_message_id,event_data_json FROM published_posts WHERE source_guild_id=? AND source_channel_id='discord-event' AND category='events'"
   ).bind(env.ALLOWED_GUILD_ID).all();
 
-  // Refresh already-published events individually. When Discord no longer
-  // exposes an event in either endpoint, treat it as ended for the website.
+  // Discord's guild event list is the authoritative indicator for this feed:
+  // once a published event disappears from it, keep its website post as ended.
+  // Do not individually fetch absent events, since that endpoint can return a
+  // stale active status and incorrectly restore "Started".
   for (const post of knownPosts.results || []) {
     const eventId = String(post.source_message_id || "");
     if (!eventId || eventsById.has(eventId)) continue;
-    try {
-      const event = await discordApi(env,`/guilds/${env.ALLOWED_GUILD_ID}/scheduled-events/${eventId}?with_user_count=true`);
-      if (event?.id) {
-        eventsById.set(String(event.id), event);
-        continue;
-      }
-      throw new Error("Discord returned no event record");
-    } catch (error) {
-      console.warn("Discord no longer returns event; marking it ended", eventId, String(error?.message || error));
-      let prior = {};
-      try { prior = JSON.parse(post.event_data_json || "{}"); } catch {}
-      const endedData = { ...prior, id:eventId, eventId, status:3, statusText:"ended" };
-      await env.DB.prepare("UPDATE published_posts SET event_data_json=?,updated_at=CURRENT_TIMESTAMP WHERE post_id=?")
-        .bind(JSON.stringify(endedData), post.post_id).run();
-    }
+    let prior = {};
+    try { prior = JSON.parse(post.event_data_json || "{}"); } catch {}
+    const endedData = { ...prior, id:eventId, eventId, status:3, statusText:"ended" };
+    await env.DB.prepare("UPDATE published_posts SET event_data_json=?,updated_at=CURRENT_TIMESTAMP WHERE post_id=?")
+      .bind(JSON.stringify(endedData), post.post_id).run();
   }
 
   for (const event of eventsById.values()) {
