@@ -156,6 +156,10 @@ const REGISTERED_COMMANDS = [
                   {
                     "name": "bluemap",
                     "value": "bluemap"
+                  },
+                  {
+                    "name": "donate",
+                    "value": "donate"
                   }
                 ]
               },
@@ -193,6 +197,10 @@ const REGISTERED_COMMANDS = [
                   {
                     "name": "bluemap",
                     "value": "bluemap"
+                  },
+                  {
+                    "name": "donate",
+                    "value": "donate"
                   }
                 ]
               }
@@ -1311,12 +1319,12 @@ async function handle(interaction, env) {
       if (command === "link.set" || args.set) {
         const key = args.key ?? args.set?.key;
         const url = args.url ?? args.set?.url;
-        if (!["discord", "youtube", "modpack", "bluemap"].includes(key) || !/^https?:\/\//i.test(url || "")) return respond("Choose a supported link key and provide a valid http(s) URL.");
+        if (!["discord", "youtube", "modpack", "bluemap", "donate"].includes(key) || !/^https?:\/\//i.test(url || "")) return respond("Choose a supported link key and provide a valid http(s) URL.");
         await env.DB.prepare("INSERT INTO website_links(link_key,url,updated_by) VALUES(?,?,?) ON CONFLICT(link_key) DO UPDATE SET url=excluded.url,updated_by=excluded.updated_by,updated_at=CURRENT_TIMESTAMP").bind(key, url, userId).run();
         return respond(`Updated website link: **${key}**.`);
       }
       const key = args.key ?? args.unset?.key;
-      if (!["discord", "youtube", "modpack", "bluemap"].includes(key)) return respond("Choose discord, youtube, modpack, or bluemap.");
+      if (!["discord", "youtube", "modpack", "bluemap", "donate"].includes(key)) return respond("Choose discord, youtube, modpack, or bluemap.");
       await env.DB.prepare("DELETE FROM website_links WHERE link_key=?").bind(key).run();
       return respond(`Unset website link: **${key}**.`);
     }
