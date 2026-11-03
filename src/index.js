@@ -1244,7 +1244,6 @@ async function handle(interaction, env) {
       const value = detailed?.stat_value ?? player[stat] ?? 0;
       return respond(null,true,{title:`${player.username} — ${labels[stat] || stat}`,description:String(value)});
     }
-    const detailed = await env.DB.prepare("SELECT stat_id,stat_value FROM player_statistics WHERE minecraft_uuid=? ORDER BY stat_id LIMIT 20").bind(player.uuid).all();
     const fields = [
       {name:"Playtime",value:`${Math.floor((player.playtime_seconds || 0)/3600)} hours`,inline:true},
       {name:"Blocks broken",value:String(player.blocks_broken || 0),inline:true},
@@ -1252,8 +1251,6 @@ async function handle(interaction, env) {
       {name:"Deaths",value:String(player.deaths || 0),inline:true},
       {name:"Kills",value:String(player.kills || 0),inline:true}
     ];
-    for (const item of (detailed.results || [])) fields.push({name:item.stat_id.slice(0,256),value:String(item.stat_value),inline:true});
-    fields.push({name:"UUID",value:player.uuid,inline:false});
     return respond(null,true,{title:`${player.username} — Player statistics`,fields});
   }
   if (command === "news") {
