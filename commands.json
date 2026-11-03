@@ -150,6 +150,10 @@
                   {
                     "name": "bluemap",
                     "value": "bluemap"
+                  },
+                  {
+                    "name": "donate",
+                    "value": "donate"
                   }
                 ]
               },
@@ -187,6 +191,10 @@
                   {
                     "name": "bluemap",
                     "value": "bluemap"
+                  },
+                  {
+                    "name": "donate",
+                    "value": "donate"
                   }
                 ]
               }
