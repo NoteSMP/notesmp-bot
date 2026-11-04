@@ -1237,6 +1237,9 @@ async function handle(interaction, env) {
     else if (args.playername) player = await env.DB.prepare("SELECT uuid,username,first_join,last_seen,playtime_seconds,blocks_broken,blocks_placed,deaths,kills FROM players WHERE username=? COLLATE NOCASE").bind(cleanText(args.playername,16)).first();
     else return respond("Provide a Minecraft username or a linked Discord user.");
     if (!player) return respond("Player not found, or that Discord account is not linked.");
+    // A command requests a refresh but still responds with cached data immediately.
+    // The plugin claims the shared queue item and updates this same D1 database.
+    await env.DB.prepare("INSERT INTO stats_refresh_queue(uuid,username,status,requested_at) VALUES(?,?,'pending',CURRENT_TIMESTAMP) ON CONFLICT(uuid) DO UPDATE SET username=excluded.username,status='pending',requested_at=CURRENT_TIMESTAMP WHERE stats_refresh_queue.requested_at < datetime('now','-60 seconds')").bind(player.uuid,player.username).run();
     const stat = args.stat;
     if (stat) {
       const labels = { playtime_seconds:"Playtime (seconds)",blocks_broken:"Blocks broken",blocks_placed:"Blocks placed",deaths:"Deaths",kills:"Kills" };
