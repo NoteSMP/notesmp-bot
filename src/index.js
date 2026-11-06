@@ -1324,7 +1324,7 @@ async function handle(interaction, env) {
         return respond(`Updated website link: **${key}**.`);
       }
       const key = args.key ?? args.unset?.key;
-      if (!["discord", "youtube", "modpack", "bluemap", "donate"].includes(key)) return respond("Choose discord, youtube, modpack, or bluemap.");
+      if (!["discord", "youtube", "modpack", "bluemap", "donate"].includes(key)) return respond("Choose discord, youtube, modpack, bluemap, or donate.");
       await env.DB.prepare("DELETE FROM website_links WHERE link_key=?").bind(key).run();
       return respond(`Unset website link: **${key}**.`);
     }
@@ -1521,7 +1521,7 @@ export default {
         CREATE TABLE IF NOT EXISTS published_posts (post_id TEXT PRIMARY KEY, six_digit_id TEXT NOT NULL UNIQUE, category TEXT NOT NULL, group_name TEXT, source_guild_id TEXT NOT NULL, source_channel_id TEXT NOT NULL, source_message_id TEXT NOT NULL, author_discord_id TEXT, linked_minecraft_uuid TEXT, linked_minecraft_name TEXT, title TEXT, subtitle TEXT, body TEXT NOT NULL DEFAULT '', image_urls_json TEXT NOT NULL DEFAULT '[]', event_data_json TEXT, published_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(source_guild_id, source_channel_id, source_message_id, category));
         CREATE INDEX IF NOT EXISTS idx_posts_category_date ON published_posts(category, published_at DESC);
         CREATE TABLE IF NOT EXISTS channel_sync (category TEXT PRIMARY KEY CHECK(category IN ('rules','updates')), channel_id TEXT NOT NULL, configured_by TEXT, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-        CREATE TABLE IF NOT EXISTS website_links (link_key TEXT PRIMARY KEY CHECK(link_key IN ('discord','youtube','modpack','bluemap')), url TEXT NOT NULL, updated_by TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS website_links (link_key TEXT PRIMARY KEY CHECK(link_key IN ('discord','youtube','modpack','bluemap','donate')), url TEXT NOT NULL, updated_by TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS verification_codes (code TEXT PRIMARY KEY, discord_user_id TEXT NOT NULL UNIQUE, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL);
         CREATE INDEX IF NOT EXISTS idx_verification_expiry ON verification_codes(expires_at);
         CREATE TABLE IF NOT EXISTS account_links (discord_user_id TEXT PRIMARY KEY UNIQUE, minecraft_uuid TEXT NOT NULL UNIQUE, minecraft_name TEXT NOT NULL, linked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
@@ -1539,6 +1539,15 @@ export default {
         CREATE INDEX IF NOT EXISTS idx_player_statistics_uuid ON player_statistics(minecraft_uuid);
         CREATE TABLE IF NOT EXISTS channel_sync_state (category TEXT PRIMARY KEY, last_message_id TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
       `);
+      const linksSchema = await env.DB.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='website_links'").first();
+      if (linksSchema?.sql && !linksSchema.sql.includes("'donate'")) {
+        await env.DB.exec(`
+          CREATE TABLE website_links_next (link_key TEXT PRIMARY KEY CHECK(link_key IN ('discord','youtube','modpack','bluemap','donate')), url TEXT NOT NULL, updated_by TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+          INSERT OR IGNORE INTO website_links_next(link_key,url,updated_by,updated_at) SELECT link_key,url,updated_by,updated_at FROM website_links;
+          DROP TABLE website_links;
+          ALTER TABLE website_links_next RENAME TO website_links;
+        `);
+      }
       return new Response(JSON.stringify({ok:true,migrated:["bot_config","access_entries","published_posts","channel_sync","website_links","verification_codes","account_links","creators","status_message","server_state","players","verification_requests","player_statistics","channel_sync_state"]}), {
         status: 200,
         headers: {
