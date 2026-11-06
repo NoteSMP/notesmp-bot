@@ -1434,6 +1434,20 @@ async function syncConfiguredChannels(env) {
   }
 }
 
+async function ensureGuildCommands(env) {
+  const revision = "donate-link-key-v1";
+  const current = await env.DB.prepare("SELECT value FROM bot_config WHERE key='registered_command_revision'").first();
+  if (current?.value === revision) return;
+  if (!env.DISCORD_BOT_TOKEN || !env.DISCORD_APPLICATION_ID || !env.ALLOWED_GUILD_ID) throw new Error("Cannot register Discord commands: required bindings are missing");
+  const response = await fetch(`https://discord.com/api/v10/applications/${env.DISCORD_APPLICATION_ID}/guilds/${env.ALLOWED_GUILD_ID}/commands`, {
+    method: "PUT",
+    headers: { "Authorization": `Bot ${env.DISCORD_BOT_TOKEN}`, "Content-Type": "application/json" },
+    body: JSON.stringify(REGISTERED_COMMANDS)
+  });
+  if (!response.ok) throw new Error("Discord command registration failed (" + response.status + "): " + (await response.text()).slice(0, 500));
+  await env.DB.prepare("INSERT INTO bot_config(key,value) VALUES('registered_command_revision',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=CURRENT_TIMESTAMP").bind(revision).run();
+}
+
 async function refreshStatusMessage(env) {
   const saved = await env.DB.prepare("SELECT channel_id,message_id FROM status_message WHERE id=1").first();
   if (!saved?.message_id || !saved?.channel_id) return;
@@ -1489,7 +1503,7 @@ async function refreshTwitchCreators(env) {
 export default {
   async scheduled(controller, env, ctx) {
     const minute = new Date(controller.scheduledTime || Date.now()).getUTCMinutes();
-    const jobs = [syncDiscordEvents(env), syncConfiguredChannels(env)];
+    const jobs = [ensureGuildCommands(env), syncDiscordEvents(env), syncConfiguredChannels(env)];
     if (minute % 5 === 0) jobs.push(refreshStatusMessage(env), refreshTwitchCreators(env));
     ctx.waitUntil(Promise.allSettled(jobs).then(results => {
       for (const result of results) if (result.status === "rejected") console.error("Scheduled job failed:", String(result.reason?.message || result.reason));
