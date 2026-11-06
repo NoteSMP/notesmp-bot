@@ -1,143 +1,87 @@
 # NoteSMP Discord Bot
 
-Cloudflare Worker-based Discord application for NoteSMP. It uses Discord Interactions (HTTP) rather than a persistent Gateway process.
+Discord application for NoteSMP, implemented as a Cloudflare Worker using Discord HTTP Interactions. It does not require a permanently running Gateway client.
 
-## What it does
+- **Worker:** `notesmp-bot`
+- **Interactions endpoint:** `https://notesmp-bot.notesmp-de.workers.dev/interactions`
+- **Database:** shared Cloudflare D1 database `notesmp-data`, binding `DB`
+- **API:** `https://notesmp-api.notesmp-de.workers.dev`
+- **Entry point:** `src/index.js`
 
-- Publishes Discord messages and gallery content to the NoteSMP website.
-- Manages website news, links, sync channels, posts, and authorized administrators.
-- Exposes Minecraft account verification and public player statistics commands.
-- Maintains a Discord server-status message and Twitch creator listing through the NoteSMP API.
+## Features
 
-## Deploy / configure
+- Discord slash commands for website administration and publishing.
+- Publishes gallery posts and synced Discord content to the NoteSMP website.
+- Manages website links, active news, creator entries and channel synchronization.
+- Supports Minecraft/Discord account verification and public player-stat lookups.
+- Publishes or refreshes the Discord server-status message.
+- Uses D1 for persistent configuration, access control and synchronized content.
 
-1. Deploy this repository as the `notesmp-bot` Cloudflare Worker using `wrangler.jsonc`.
-2. Bind the Cloudflare D1 database as `DB` (database name: `notesmp-data`).
-3. Apply the bot database schema in `schema.sql` to that database.
-4. Configure Worker variables/secrets:
-   - `DISCORD_PUBLIC_KEY` — Discord application's public key.
-   - `DISCORD_APPLICATION_ID` — Discord application ID.
-   - `DISCORD_BOT_TOKEN` — bot token; keep secret.
-   - `OWNER_DISCORD_ID` — owner Discord user ID.
-   - `ALLOWED_GUILD_ID` — NoteSMP Discord server ID.
-   - `NOTESMP_API_URL` — base URL of the NoteSMP API Worker.
-   - `MINECRAFT_API_KEY` — shared secret used by Minecraft/API verification and stats routes, if those features are enabled.
-   - Twitch client credentials, if used by the creator stream integration.
-5. Set Discord's Interactions Endpoint URL to `https://<worker-host>/interactions`.
-6. Register the application commands using the command registration/setup route or deployment workflow, then test in the allowed guild.
+## Deployment and setup
 
-Never commit tokens, API keys, or other credentials. Use Cloudflare Worker secrets for sensitive values.
+1. Deploy this repository as the `notesmp-bot` Worker using `wrangler.jsonc`.
+2. Confirm the `DB` binding points to `notesmp-data`.
+3. Configure the Worker variables and secrets below.
+4. Set Discord's Interactions Endpoint URL to `https://notesmp-bot.notesmp-de.workers.dev/interactions`.
+5. Register or refresh the Discord application commands using the repository's supported registration workflow.
+6. Test commands in the configured NoteSMP guild.
 
-## Slash command reference
+### Required configuration
 
-Discord commands are invoked with `/`. Required options are marked **required**; optional ones may be omitted. Some commands are owner-only or require the bot's configured website-admin access.
-
-### General
-
-| Command | Usage | Description |
+| Name | Type | Purpose |
 |---|---|---|
-| `/help` | `/help` | Shows a short bot help message. |
+| `ALLOWED_GUILD_ID` | Variable | Restricts guild interactions to the NoteSMP Discord server. |
+| `NOTESMP_API_URL` | Variable | Base URL of the NoteSMP API Worker. |
+| `DISCORD_PUBLIC_KEY` | Secret | Verifies signed Discord interaction requests. |
+| `DISCORD_APPLICATION_ID` | Variable/secret | Discord application ID used for command registration. |
+| `DISCORD_BOT_TOKEN` | Secret | Bot token for Discord REST operations. |
+| `OWNER_DISCORD_ID` | Variable/secret | Owner-only administrative authorization. |
+| `MINECRAFT_API_KEY` | Secret | Shared key for protected Minecraft/API operations. |
+| Twitch credentials | Secrets | Used when Twitch creator lookups are enabled. |
 
-### Website administrator access
+Use Cloudflare Worker secrets for credentials. Never commit real tokens, IDs that are treated as secrets, or API keys.
 
-Owner-only access management.
+## Slash commands
 
-| Command | Usage | Description |
-|---|---|---|
-| `/access add` | `/access add target:<user-or-role>` | Grants website-admin access to a Discord user or role. |
-| `/access remove` | `/access remove target:<user-or-role>` | Revokes website-admin access. |
-| `/access list` | `/access list` | Lists configured user and role access entries. |
+The command implementation in `src/index.js` is the source of truth. Current command groups include:
 
-### Website links
+- `/help`
+- `/access add|remove|list`
+- `/link set|unset`
+- `/sync` and `/unsync`
+- `/publish`
+- `/post remove|update|modify`
+- `/creator add|remove`
+- `/verify` and `/unverify`
+- `/playerstats`
+- `/news set|unset`
+- `/serverstatus sendmessage`
 
-Requires website-admin access.
+Some commands require website-admin access; access-management operations are owner-only. The command schema and required option names can change, so consult the current Discord command definitions in the source rather than relying on copied examples.
 
-| Command | Usage | Description |
-|---|---|---|
-| `/link set` | `/link set key:<discord\|youtube\|modpack\|bluemap> url:<https-url>` | Sets or replaces a website link. |
-| `/link unset` | `/link unset key:<discord\|youtube\|modpack\|bluemap>` | Removes the selected website link. |
+## Minecraft account verification
 
-### Auto-publishing / channel sync
+1. A player starts linking with `/verify` in Discord and receives a short-lived, single-use code privately.
+2. The player enters `/verify <six-digit-code>` in Minecraft.
+3. The Paper plugin submits the code and Minecraft identity to the protected bot endpoint.
+4. On success, the Discord account and Minecraft UUID/name are linked.
 
-Requires website-admin access.
+The plugin uses the shared `MINECRAFT_API_KEY`. Do not share verification codes with other users.
 
-| Command | Usage | Description |
-|---|---|---|
-| `/sync` | `/sync category:<rules\|updates> channel:<channel>` | Enables publishing from the selected Discord channel. |
-| `/unsync` | `/unsync category:<rules\|updates>` | Stops syncing the selected category. |
+## Scheduled work
 
-### Publish a gallery item
+The Wrangler configuration runs the Worker Cron Trigger every minute. Scheduled work is handled by the Worker; no always-on server process is needed. Review the scheduled handler in `src/index.js` when changing sync cadence or maintenance behavior.
 
-Requires website-admin access. The source message is read from the channel where the command is run.
-
-| Command | Usage | Description |
-|---|---|---|
-| `/publish` | `/publish message_id:<id> gallery_category:<events\|buildings\|places\|inprogress> dimension:<overworld\|nether\|end> [title] [subtitle] [coordinates]` | Publishes a Discord message and its images to the website gallery. Coordinates use three values, e.g. `120, 64, -30`. |
-
-### Published posts
-
-Requires website-admin access. Post IDs are six-digit IDs returned when publishing.
-
-| Command | Usage | Description |
-|---|---|---|
-| `/post remove` | `/post remove post_id:<six-digit-id>` | Deletes a published post. |
-| `/post update` | `/post update post_id:<six-digit-id>` | Refreshes a synced Rules/Updates post from its source Discord message. Not for gallery posts. |
-| `/post modify` | `/post modify post_id:<six-digit-id> title:<text> subtitle:<text> category:<events\|buildings\|places\|inprogress> dimension:<overworld\|nether\|end> [coordinates]` | Edits gallery metadata without re-fetching its source message. |
-
-### Twitch creators
-
-Requires website-admin access.
-
-| Command | Usage | Description |
-|---|---|---|
-| `/creator add` | `/creator add twitchname:<username>` | Adds a Twitch creator to the website creator list. |
-| `/creator remove` | `/creator remove twitchname:<username>` | Removes a creator. |
-
-### Minecraft account linking
-
-| Command | Usage | Description |
-|---|---|---|
-| `/verify` | `/verify playername:<Minecraft-username>` | Starts account linking and returns a verification code. Complete the in-game/plugin verification flow before it expires. |
-| `/unverify` | `/unverify discord_user:<user> minecraft_uuid:<UUID>` | Removes a Discord/Minecraft account link. Use the linked Discord account and Minecraft UUID. |
-
-### Player statistics
-
-| Command | Usage | Description |
-|---|---|---|
-| `/playerstats` | `/playerstats [playername:<username>] [discord_user:<user>] [stat:<stat-id>]` | Looks up public stats by Minecraft name or linked Discord account. The optional stat ID can be a Minecraft statistic key such as `minecraft:mob_kills`. Supply the identity option and optionally a statistic key. |
-
-### News
-
-| Command | Usage | Description |
-|---|---|---|
-| `/news set maintenance` | `/news set maintenance reason:<text> [timestamp:<10-digit-Unix-seconds>] [duration:<duration>]` | Sets a maintenance news item. Duration examples: `2h`, `30m`, `1d4h30m`. Timestamp is Unix time in seconds. |
-| `/news set warning` | `/news set warning title:<text> subtitle:<text>` | Sets the active warning news item. |
-| `/news set info` | `/news set info title:<text> subtitle:<text>` | Sets the active informational news item. |
-| `/news unset remove` | `/news unset remove` | Removes the active news item. |
-
-The active news area is intended for the current announcement; a new set command replaces the prior item.
-
-### Live server status
-
-| Command | Usage | Description |
-|---|---|---|
-| `/serverstatus sendmessage` | `/serverstatus sendmessage channel:<channel>` | Creates or replaces the status embed in the selected Discord channel. |
-
-## Local development
-
-Install Wrangler and authenticate with Cloudflare:
+## Local development and deployment
 
 ```bash
-npm install --save-dev wrangler
-npx wrangler login
+npm install
 npx wrangler dev
+npx wrangler deploy
 ```
 
-Deploy:
+Set local secrets with Wrangler's secret commands or a local development secret file that is excluded from Git. Never commit `.dev.vars`.
 
-```npx wrangler deploy
-```
+## Data flow
 
-## Architecture
-
-Discord sends signed interaction requests to the Worker. The Worker verifies signatures, restricts interactions to the configured guild, uses D1 for persisted configuration/content, and calls the NoteSMP API for Minecraft/server data.
+Discord sends signed interaction requests to the Worker. The Worker validates the signature and guild, applies authorization checks, reads/writes D1, and calls the NoteSMP API for player and server information. The Minecraft Paper plugin talks to the protected bot/API endpoints for verification and player data.
