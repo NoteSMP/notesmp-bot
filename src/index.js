@@ -607,12 +607,6 @@ const REGISTERED_COMMANDS = [
               },
               {
                 "type": 3,
-                "name": "subtitle",
-                "description": "Subtitle",
-                "required": false
-              },
-              {
-                "type": 3,
                 "name": "color",
                 "description": "orange or red",
                 "required": true,
@@ -626,6 +620,12 @@ const REGISTERED_COMMANDS = [
                     "value": "red"
                   }
                 ]
+              },
+              {
+                "type": 3,
+                "name": "subtitle",
+                "description": "Subtitle",
+                "required": false
               }
             ]
           },
