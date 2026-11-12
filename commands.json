@@ -34,6 +34,18 @@
     ]
   },
   {
+    "name": "ign",
+    "description": "Look up a linked Minecraft username",
+    "options": [
+      {
+        "type": 6,
+        "name": "discordname",
+        "description": "Discord user to look up",
+        "required": true
+      }
+    ]
+  },
+  {
     "name": "playerstats",
     "description": "View public Minecraft player statistics",
     "options": [
