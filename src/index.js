@@ -1522,7 +1522,7 @@ export default {
       for (const result of results) if (result.status === "rejected") console.error("Scheduled job failed:", String(result.reason?.message || result.reason));
     }));
   },
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/") return json({ ok: true, service: "notesmp-discord-worker" });
 
@@ -1669,6 +1669,38 @@ export default {
     if (interaction.type === 1) return json({ type: 1 });
     if (!env.ALLOWED_GUILD_ID || interaction.guild_id !== env.ALLOWED_GUILD_ID) return respond("This bot is only available in the official NoteSMP Discord server.");
     if (interaction.type === 2) {
+      const topOption = interaction.data?.options?.[0];
+      const isGalleryAdd = interaction.data?.name === "ws" &&
+        topOption?.type === 2 && topOption.name === "gallery" &&
+        topOption.options?.[0]?.type === 1 && topOption.options[0].name === "add";
+      if (isGalleryAdd) {
+        if (!env.DISCORD_APPLICATION_ID || !interaction.token) return respond("The interaction could not be deferred.");
+        ctx.waitUntil((async () => {
+          let payload;
+          try {
+            const result = await handle(interaction, env);
+            payload = await result.json();
+            if (payload?.type === 4 && payload.data) {
+              const edit = await fetch(`https://discord.com/api/v10/webhooks/${env.DISCORD_APPLICATION_ID}/${interaction.token}/messages/@original`, {
+                method: "PATCH",
+                headers: { "Authorization": `Bot ${env.DISCORD_BOT_TOKEN}`, "Content-Type": "application/json" },
+                body: JSON.stringify(payload.data)
+              });
+              if (!edit.ok) console.error("Deferred gallery response edit failed:", edit.status, (await edit.text()).slice(0, 500));
+            }
+          } catch (error) {
+            console.error("Deferred gallery add failed:", String(error?.stack || error?.message || error));
+            const message = { content: "Gallery upload failed. Check the Worker logs for details.", flags: 64, allowed_mentions: { parse: [] } };
+            const edit = await fetch(`https://discord.com/api/v10/webhooks/${env.DISCORD_APPLICATION_ID}/${interaction.token}/messages/@original`, {
+              method: "PATCH",
+              headers: { "Authorization": `Bot ${env.DISCORD_BOT_TOKEN}`, "Content-Type": "application/json" },
+              body: JSON.stringify(message)
+            });
+            if (!edit.ok) console.error("Deferred gallery error response failed:", edit.status, (await edit.text()).slice(0, 500));
+          }
+        })());
+        return json({ type: 5, data: { flags: 64 } });
+      }
       try { return await handle(interaction, env); }
       catch (error) {
         console.error("Interaction handler failed:", String(error?.message || error));
