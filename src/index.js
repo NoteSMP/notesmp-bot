@@ -856,13 +856,7 @@ const REGISTERED_COMMANDS = [
       }
     ]
   }
-]  }
-        ]
-      }
-    ]
-  }
 ];
-
 
 async function verifyDiscordRequest(request, body, publicKey) {
   const signature = request.headers.get("X-Signature-Ed25519");
