@@ -88,6 +88,39 @@ const REGISTERED_COMMANDS = [
     "options": [
       {
         "type": 2,
+        "name": "player",
+        "description": "Control public player visibility",
+        "options": [
+          {
+            "type": 1,
+            "name": "hide",
+            "description": "Hide a player from the website",
+            "options": [
+              {
+                "type": 3,
+                "name": "player",
+                "description": "Minecraft username or UUID",
+                "required": true
+              }
+            ]
+          },
+          {
+            "type": 1,
+            "name": "show",
+            "description": "Show a player on the website again",
+            "options": [
+              {
+                "type": 3,
+                "name": "player",
+                "description": "Minecraft username or UUID",
+                "required": true
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": 2,
         "name": "access",
         "description": "Manage administrator access",
         "options": [
@@ -1040,6 +1073,22 @@ async function handle(interaction, env) {
     return respond(`Removed ${type} access.`);
   }
 
+  if (command === "player.hide" || command === "player.show") {
+    if (!(await hasAdminAccess(env, interaction))) return respond("You don’t have permission to manage player visibility.");
+    const target = cleanText(args.player, 64).trim();
+    if (!target) return respond("Provide a Minecraft username or UUID.");
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(target);
+    const player = isUuid
+      ? await env.DB.prepare("SELECT uuid,username FROM players WHERE uuid=?").bind(target.toLowerCase()).first()
+      : await env.DB.prepare("SELECT uuid,username FROM players WHERE username=? COLLATE NOCASE").bind(target).first();
+    if (!player) return respond("Player not found. The player must have joined the server at least once.");
+    if (command === "player.hide") {
+      await env.DB.prepare("INSERT INTO hidden_players(uuid,username,hidden_by) VALUES(?,?,?) ON CONFLICT(uuid) DO UPDATE SET username=excluded.username,hidden_by=excluded.hidden_by,hidden_at=CURRENT_TIMESTAMP").bind(player.uuid,player.username,userId).run();
+      return respond("**" + player.username + "** is now hidden from the website player list, online list, statistics, advancements and direct profile URL.");
+    }
+    await env.DB.prepare("DELETE FROM hidden_players WHERE uuid=?").bind(player.uuid).run();
+    return respond("**" + player.username + "** is visible on the website again.");
+  }
   if (command === "publish") {
     if (!(await hasAdminAccess(env, interaction))) return respond("You don’t have permission to publish website content.");
     const channelId = interaction.channel_id;
@@ -1257,8 +1306,8 @@ async function handle(interaction, env) {
     const discordUser = args.discord_user;
     const discordId = typeof discordUser === "object" ? discordUser.id : discordUser;
     let player = null;
-    if (discordId) player = await env.DB.prepare("SELECT p.uuid,p.username,p.first_join,p.last_seen,p.playtime_seconds,p.blocks_broken,p.blocks_placed,p.deaths,p.kills FROM players p JOIN account_links a ON a.minecraft_uuid=p.uuid WHERE a.discord_user_id=?").bind(discordId).first();
-    else if (args.playername) player = await env.DB.prepare("SELECT uuid,username,first_join,last_seen,playtime_seconds,blocks_broken,blocks_placed,deaths,kills FROM players WHERE username=? COLLATE NOCASE").bind(cleanText(args.playername,16)).first();
+    if (discordId) player = await env.DB.prepare("SELECT p.uuid,p.username,p.first_join,p.last_seen,p.playtime_seconds,p.blocks_broken,p.blocks_placed,p.deaths,p.kills FROM players p JOIN account_links a ON a.minecraft_uuid=p.uuid LEFT JOIN hidden_players h ON h.uuid=p.uuid WHERE a.discord_user_id=? AND h.uuid IS NULL").bind(discordId).first();
+    else if (args.playername) player = await env.DB.prepare("SELECT p.uuid,p.username,p.first_join,p.last_seen,p.playtime_seconds,p.blocks_broken,p.blocks_placed,p.deaths,p.kills FROM players p LEFT JOIN hidden_players h ON h.uuid=p.uuid WHERE p.username=? COLLATE NOCASE AND h.uuid IS NULL").bind(cleanText(args.playername,16)).first();
     else return respond("Provide a Minecraft username or a linked Discord user.");
     if (!player) return respond("Player not found, or that Discord account is not linked.");
     // A command requests a refresh but still responds with cached data immediately.
@@ -1721,3 +1770,4 @@ export default {
     return json({ error: "Unsupported interaction type" }, 400);
   },
 };
+;
