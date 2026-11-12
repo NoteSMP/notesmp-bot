@@ -1508,7 +1508,7 @@ async function syncConfiguredChannels(env) {
 }
 
 async function ensureGuildCommands(env) {
-  const revision = "donate-link-key-v1";
+  const revision = "player-visibility-v1";
   const current = await env.DB.prepare("SELECT value FROM bot_config WHERE key='registered_command_revision'").first();
   if (current?.value === revision) return;
   if (!env.DISCORD_BOT_TOKEN || !env.DISCORD_APPLICATION_ID || !env.ALLOWED_GUILD_ID) throw new Error("Cannot register Discord commands: required bindings are missing");
