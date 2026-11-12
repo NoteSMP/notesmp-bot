@@ -848,5 +848,25 @@
         ]
       }
     ]
+  },
+  {
+    "name": "website",
+    "description": "Show the NoteSMP website link"
+  },
+  {
+    "name": "modpack",
+    "description": "Show the NoteSMP modpack link"
+  },
+  {
+    "name": "youtube",
+    "description": "Show the NoteSMP youtube link"
+  },
+  {
+    "name": "bluemap",
+    "description": "Show the NoteSMP bluemap link"
+  },
+  {
+    "name": "donate",
+    "description": "Show the NoteSMP donate link"
   }
 ]
