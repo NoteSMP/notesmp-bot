@@ -906,7 +906,7 @@ async function storeMessageImages(env, message, postId) {
     for (let offset = 0; offset < bytes.length; offset += 0x8000) binary += String.fromCharCode(...bytes.subarray(offset, Math.min(offset + 0x8000, bytes.length)));
     const upload = await fetch(`https://api.github.com/repos/NoteSMP/notesmp-ressources/contents/${path.split("/").map(encodeURIComponent).join("/")}`, {
       method: "PUT",
-      headers: { "Authorization": `Bearer ${env.GITHUB_TOKEN}`, "Accept": "application/vnd.github+json", "Content-Type": "application/json", "X-GitHub-Api-Version": "2022-11-28" },
+      headers: { "Authorization": `Bearer ${env.GITHUB_TOKEN}`, "Accept": "application/vnd.github+json", "Content-Type": "application/json", "User-Agent": "NoteSMP-Discord-Bot/1.0 (+https://www.notesmp.de)", "X-GitHub-Api-Version": "2022-11-28" },
       body: JSON.stringify({ message: `Store NoteSMP gallery image for post ${postId}`, content: btoa(binary) })
     });
     if (!upload.ok) {
