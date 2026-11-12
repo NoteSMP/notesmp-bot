@@ -646,12 +646,6 @@
               },
               {
                 "type": 3,
-                "name": "subtitle",
-                "description": "Subtitle",
-                "required": false
-              },
-              {
-                "type": 3,
                 "name": "color",
                 "description": "orange or red",
                 "required": true,
@@ -665,6 +659,12 @@
                     "value": "red"
                   }
                 ]
+              },
+              {
+                "type": 3,
+                "name": "subtitle",
+                "description": "Subtitle",
+                "required": false
               }
             ]
           },
