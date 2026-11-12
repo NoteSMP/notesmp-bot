@@ -1120,6 +1120,8 @@ async function handle(interaction, env) {
     if (command==="gallery.add") {
       const category=args.gallery_category,title=cleanText(args.title,180).trim(),messageId=cleanText(args.message_id,30);
       if(!["events","buildings","places","inprogress"].includes(category)||!title||!/^\d{17,20}$/.test(messageId)) return respond("Choose a gallery category, provide a nonempty title, and a valid Discord message ID.");
+      const existing=await env.DB.prepare("SELECT six_digit_id,group_name FROM published_posts WHERE source_guild_id=? AND source_channel_id=? AND source_message_id=? AND category='gallery' LIMIT 1").bind(interaction.guild_id,interaction.channel_id,messageId).first();
+      if(existing) return respond(`This Discord message is already published in **Gallery / ${existing.group_name}**. Existing post ID: **${existing.six_digit_id}**. Use **/ws gallery move** if you want to change its section.`);
       const message=await fetchSourceMessage(env,interaction.channel_id,messageId);
       const subtitle=cleanText(args.subtitle,240).trim(),dimension=args.dimension||null,coords=args.coordinates?parseCoordinates(args.coordinates):null;
       if(args.coordinates&&!coords) return respond("Coordinates must contain exactly three numbers, e.g. 120, 64, -30.");
@@ -1131,8 +1133,17 @@ async function handle(interaction, env) {
       }
       const six=await nextSixDigitId(env),pid=crypto.randomUUID(),ev={galleryGroup:category,dimension,coordinates:coords,builders};
       const linked=await env.DB.prepare("SELECT minecraft_uuid,minecraft_name FROM account_links WHERE discord_user_id=?").bind(message.author?.id||"").first();
-      await env.DB.prepare("INSERT INTO published_posts(post_id,six_digit_id,category,group_name,source_guild_id,source_channel_id,source_message_id,author_discord_id,linked_minecraft_uuid,linked_minecraft_name,title,subtitle,body,image_urls_json,event_data_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-       .bind(pid,six,"gallery",category,interaction.guild_id,interaction.channel_id,messageId,message.author?.id||null,linked?.minecraft_uuid||null,builders.join(", ")||null,title,subtitle,cleanText(message.content,4000),JSON.stringify(await storeMessageImages(env, message, pid)),JSON.stringify(ev)).run();
+      const images=await storeMessageImages(env, message, pid);
+      try {
+        await env.DB.prepare("INSERT INTO published_posts(post_id,six_digit_id,category,group_name,source_guild_id,source_channel_id,source_message_id,author_discord_id,linked_minecraft_uuid,linked_minecraft_name,title,subtitle,body,image_urls_json,event_data_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+         .bind(pid,six,"gallery",category,interaction.guild_id,interaction.channel_id,messageId,message.author?.id||null,linked?.minecraft_uuid||null,builders.join(", ")||null,title,subtitle,cleanText(message.content,4000),JSON.stringify(images),JSON.stringify(ev)).run();
+      } catch(error) {
+        if (!String(error).includes("UNIQUE constraint failed: published_posts.source_guild_id")) throw error;
+        await deletePostImages(env,{image_urls_json:JSON.stringify(images)});
+        const duplicate=await env.DB.prepare("SELECT six_digit_id,group_name FROM published_posts WHERE source_guild_id=? AND source_channel_id=? AND source_message_id=? AND category='gallery' LIMIT 1").bind(interaction.guild_id,interaction.channel_id,messageId).first();
+        if(duplicate) return respond(`This Discord message is already published in **Gallery / ${duplicate.group_name}**. Existing post ID: **${duplicate.six_digit_id}**. Use **/ws gallery move** if you want to change its section.`);
+        throw error;
+      }
       return respond(`Gallery post created. ID: **${six}**`);
     }
     if(command==="gallery.delete"||command==="events.delete"||command==="updates.delete"||command==="rules.delete"){
