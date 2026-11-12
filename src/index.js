@@ -1260,14 +1260,14 @@ async function handle(interaction, env) {
   }
   if (command === "ign") {
     const discordId = typeof args.discordname === "object" ? args.discordname.id : args.discordname;
-    if (!/^\\d{17,20}$/.test(String(discordId || ""))) return respond("Select a valid Discord user.", false);
+    if (!/^\d{17,20}$/.test(String(discordId || ""))) return respond("Select a valid Discord user.", false);
     const linked = await env.DB.prepare(
       "SELECT a.minecraft_name FROM account_links a LEFT JOIN hidden_players h ON h.uuid=a.minecraft_uuid WHERE a.discord_user_id=? AND h.uuid IS NULL"
     ).bind(discordId).first();
     if (!linked?.minecraft_name) return respond(`<@${discordId}> is not linked to a public Minecraft player.`, false);
     return respond(null, false, {
       title: "Linked Minecraft account",
-      description: `<@${discordId}> is linked to this Minecraft player:\\n```\\n${cleanText(linked.minecraft_name,16)}\\n````
+      description: "<@" + discordId + "> is linked to this Minecraft player:\n```\n" + cleanText(linked.minecraft_name,16) + "\n```"
     });
   }
   if (command === "unverify") {
