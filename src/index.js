@@ -1087,7 +1087,7 @@ async function handle(interaction, env) {
     const key = publicLinks[command];
     let link = key === "https://www.notesmp.de" ? key : (await env.DB.prepare("SELECT url FROM website_links WHERE link_key=?").bind(key).first())?.url;
     const label = command === "website" ? "Website" : command[0].toUpperCase() + command.slice(1);
-    if (!link || !/^https?:\\/\\//i.test(link)) return respond(`The ${label} link has not been set on the website yet.`, false);
+    if (!link || !/^https?:\/\//i.test(link)) return respond(`The ${label} link has not been set on the website yet.`, false);
     return respond(`${label}: <${link}>`, false);
   }
   if (command === "help") {
