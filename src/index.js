@@ -1078,10 +1078,22 @@ async function handle(interaction, env) {
     const target = cleanText(args.player, 64).trim();
     if (!target) return respond("Provide a Minecraft username or UUID.");
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(target);
-    const player = isUuid
-      ? await env.DB.prepare("SELECT uuid,username FROM players WHERE uuid=?").bind(target.toLowerCase()).first()
-      : await env.DB.prepare("SELECT uuid,username FROM players WHERE username=? COLLATE NOCASE").bind(target).first();
-    if (!player) return respond("Player not found. The player must have joined the server at least once.");
+    if (isUuid) {
+      const uuid = target.toLowerCase();
+      const player = await env.DB.prepare("SELECT uuid,username FROM players WHERE uuid=?").bind(uuid).first();
+      if (command === "player.hide") {
+        await env.DB.prepare("INSERT INTO hidden_players(uuid,username,hidden_by) VALUES(?,?,?) ON CONFLICT(uuid) DO UPDATE SET username=COALESCE(excluded.username,hidden_players.username),hidden_by=excluded.hidden_by,hidden_at=CURRENT_TIMESTAMP").bind(uuid,player?.username || null,userId).run();
+        return respond(player?.username
+          ? "**" + player.username + "** is now hidden from the website, including future online appearances."
+          : "UUID **" + uuid + "** is now excluded from the website. It will remain hidden when this player first joins the server.");
+      }
+      const result = await env.DB.prepare("DELETE FROM hidden_players WHERE uuid=?").bind(uuid).run();
+      return respond(result.meta?.changes
+        ? (player?.username ? "**" + player.username + "** is visible on the website again." : "UUID **" + uuid + "** is no longer excluded from the website.")
+        : "That UUID was not hidden.");
+    }
+    const player = await env.DB.prepare("SELECT uuid,username FROM players WHERE username=? COLLATE NOCASE").bind(target).first();
+    if (!player) return respond("Player not found. Use their UUID to hide them before their first join.");
     if (command === "player.hide") {
       await env.DB.prepare("INSERT INTO hidden_players(uuid,username,hidden_by) VALUES(?,?,?) ON CONFLICT(uuid) DO UPDATE SET username=excluded.username,hidden_by=excluded.hidden_by,hidden_at=CURRENT_TIMESTAMP").bind(player.uuid,player.username,userId).run();
       return respond("**" + player.username + "** is now hidden from the website player list, online list, statistics, advancements and direct profile URL.");
