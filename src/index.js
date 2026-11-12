@@ -909,7 +909,20 @@ async function storeMessageImages(env, message, postId) {
       headers: { "Authorization": `Bearer ${env.GITHUB_TOKEN}`, "Accept": "application/vnd.github+json", "Content-Type": "application/json", "X-GitHub-Api-Version": "2022-11-28" },
       body: JSON.stringify({ message: `Store NoteSMP gallery image for post ${postId}`, content: btoa(binary) })
     });
-    if (!upload.ok) throw new Error(`GitHub image storage failed (HTTP ${upload.status})`);
+    if (!upload.ok) {
+      const details = (await upload.text()).slice(0, 1200);
+      const requestId = upload.headers.get("x-github-request-id") || "unavailable";
+      const rateLimit = upload.headers.get("x-ratelimit-remaining");
+      const rateLimitReset = upload.headers.get("x-ratelimit-reset");
+      console.error("GitHub gallery upload rejected:", JSON.stringify({
+        status: upload.status,
+        requestId,
+        rateLimitRemaining: rateLimit,
+        rateLimitReset,
+        details
+      }));
+      throw new Error(`GitHub image storage failed (HTTP ${upload.status}; request ${requestId}): ${details}`);
+    }
     saved.push(`https://raw.githubusercontent.com/NoteSMP/notesmp-ressources/main/${path}`);
   }
   return saved;
