@@ -1250,7 +1250,6 @@ async function handle(interaction, env) {
     await env.DB.prepare("DELETE FROM verification_requests WHERE discord_user_id=? OR expires_at<=?").bind(userId,now).run();
     await env.DB.prepare("INSERT INTO verification_requests(code,discord_user_id,minecraft_name,expires_at,created_at) VALUES(?,?,?,?,?)").bind(code,userId,playerName,now+120,now).run();
     return respond(null,true,{ title:"Minecraft verification", description:"Run this command in Minecraft within **2 minutes**:\n```\n/verify " + code + "\n```", fields:[{name:"Minecraft username",value:playerName,inline:true},{name:"Expires",value:"In 2 minutes",inline:true}], footer:{text:"Do not share this code with anyone"} });
-` + "`/verify " + code + "`", fields:[{name:"Minecraft username",value:playerName,inline:true},{name:"Expires",value:"In 2 minutes",inline:true}], footer:{text:"Do not share this code with anyone"} });
   }
   if (command === "ign") {
     const discordId = typeof args.discordname === "object" ? args.discordname.id : args.discordname;
