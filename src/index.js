@@ -3,6 +3,7 @@
  * No persistent Gateway connection is used.
  */
 const encoder = new TextEncoder();
+const MINECRAFT_GOLD = 0xFFAA00;
 
 const REGISTERED_COMMANDS = [
   {
@@ -35,6 +36,18 @@ const REGISTERED_COMMANDS = [
         "type": 3,
         "name": "minecraft_uuid",
         "description": "Minecraft UUID",
+        "required": true
+      }
+    ]
+  },
+  {
+    "name": "ign",
+    "description": "Look up a linked Minecraft username",
+    "options": [
+      {
+        "type": 6,
+        "name": "discordname",
+        "description": "Discord user to look up",
         "required": true
       }
     ]
@@ -843,6 +856,11 @@ const REGISTERED_COMMANDS = [
       }
     ]
   }
+]  }
+        ]
+      }
+    ]
+  }
 ];
 
 
@@ -870,7 +888,8 @@ function setupJson(data, status = 200) {
   } });
 }
 function respond(content, ephemeral = true, embed = null) {
-  return json({ type: 4, data: { ...(embed ? { embeds: [embed] } : { content }), ...(ephemeral ? { flags: 64 } : {}), allowed_mentions: { parse: [] } } });
+  const formattedEmbed = embed ? { ...embed, color: MINECRAFT_GOLD } : null;
+  return json({ type: 4, data: { ...(formattedEmbed ? { embeds: [formattedEmbed] } : { content }), ...(ephemeral ? { flags: 64 } : {}), allowed_mentions: { parse: [] } } });
 }
 function optionsMap(options = []) {
   const result = {};
@@ -1024,7 +1043,7 @@ function serverEmbed(status) {
   const players = Array.isArray(status.onlinePlayers) ? status.onlinePlayers.map(p => typeof p === "string" ? p : p.name).filter(Boolean) : [];
   return {
     title: "NoteSMP Server Status",
-    color: status.online ? 0x2ecc71 : 0xe74c3c,
+    color: MINECRAFT_GOLD,
     fields: [
       { name: "Status", value: status.online ? "🟢 Online" : "🔴 Offline", inline: true },
       { name: "Players", value: `${status.playersOnline || 0}/${status.maxPlayers || 0}`, inline: true },
@@ -1100,72 +1119,6 @@ async function handle(interaction, env) {
     }
     await env.DB.prepare("DELETE FROM hidden_players WHERE uuid=?").bind(player.uuid).run();
     return respond("**" + player.username + "** is visible on the website again.");
-  }
-  if (command === "publish") {
-    if (!(await hasAdminAccess(env, interaction))) return respond("You don’t have permission to publish website content.");
-    const channelId = interaction.channel_id;
-    const messageId = args.message_id;
-    const group = args.gallery_category;
-    const category = "gallery";
-    if (!["events","buildings","places","inprogress"].includes(group)) return respond("Invalid gallery section.");
-    const message = await fetchSourceMessage(env, channelId, messageId);
-    const postId = crypto.randomUUID();
-    const sixDigitId = await nextSixDigitId(env);
-    const linked = await env.DB.prepare("SELECT minecraft_uuid,minecraft_name FROM account_links WHERE discord_user_id=?").bind(message.author?.id || "").first();
-    const body = cleanText(message.content, 4000);
-    const images = await storeMessageImages(env, message, postId);
-    const title = cleanText(args.title || "", 180) || null;
-    const subtitle = cleanText(args.subtitle || "", 240) || null;
-    const dimension = ["overworld", "nether", "end"].includes(String(args.dimension || "").toLowerCase()) ? String(args.dimension).toLowerCase() : null;
-    const coordinates = parseCoordinates(cleanText(args.coordinates, 100));
-    const eventData = JSON.stringify({ galleryGroup: group, dimension, coordinates });
-    await env.DB.prepare("INSERT INTO published_posts(post_id,six_digit_id,category,group_name,source_guild_id,source_channel_id,source_message_id,author_discord_id,linked_minecraft_uuid,linked_minecraft_name,title,subtitle,body,image_urls_json,event_data_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-      .bind(postId,sixDigitId,category,group,interaction.guild_id,channelId,messageId,message.author?.id || null,linked?.minecraft_uuid || null,linked?.minecraft_name || null,title,subtitle,body,JSON.stringify(images),eventData).run();
-    return respond(null, true, { title: "Website post published", description: `${title || "Discord message"} was saved in **Gallery / ${group}**. Post ID: **${sixDigitId}**`, fields: [{ name: "Images", value: String(images.length), inline: true }, { name: "Dimension", value: dimension || "Not set", inline: true }, { name: "Coordinates", value: displayCoordinates(coordinates), inline: false }, { name: "Minecraft author", value: linked?.minecraft_name || "Not linked", inline: true }] });
-  }
-  if (command === "post") {
-    if (!(await hasAdminAccess(env, interaction))) return respond("You don’t have permission to manage website posts.");
-    if (args.remove) {
-      const id = args.remove.post_id;
-      const row = await env.DB.prepare("SELECT * FROM published_posts WHERE six_digit_id=?").bind(id).first();
-      if (!row) return respond("No published post has that six-digit ID.");
-      await env.DB.prepare("DELETE FROM published_posts WHERE post_id=?").bind(row.post_id).run();
-      await deletePostImages(env, row);
-      return respond(`Removed website post **${id}**.`);
-    }
-    if (args.update) {
-      const id = args.update.post_id;
-      const row = await env.DB.prepare("SELECT * FROM published_posts WHERE six_digit_id=?").bind(id).first();
-      if (!row) return respond("No published post has that six-digit ID.");
-      if (!["rules", "updates"].includes(row.category)) return respond("Use /post modify for gallery posts. /post update only refreshes synced rules or updates.");
-      const message = await fetchSourceMessage(env, row.source_channel_id, row.source_message_id);
-      const images = await storeMessageImages(env, message, row.post_id);
-      const linked = await env.DB.prepare("SELECT minecraft_uuid,minecraft_name FROM account_links WHERE discord_user_id=?").bind(message.author?.id || "").first();
-      await env.DB.prepare("UPDATE published_posts SET body=?,image_urls_json=?,author_discord_id=?,linked_minecraft_uuid=?,linked_minecraft_name=?,updated_at=CURRENT_TIMESTAMP WHERE post_id=?")
-        .bind(cleanText(message.content,4000),JSON.stringify(images),message.author?.id || null,linked?.minecraft_uuid || null,linked?.minecraft_name || null,row.post_id).run();
-      await deletePostImages(env, row);
-      return respond(null, true, { title: "Synced post updated", description: `Rules/updates post **${id}** refreshed from its original Discord message.`, fields: [{name:"Images",value:String(images.length),inline:true}] });
-    }
-    if (args.modify) {
-      const values = args.modify;
-      const id = values.post_id;
-      const row = await env.DB.prepare("SELECT * FROM published_posts WHERE six_digit_id=?").bind(id).first();
-      if (!row) return respond("No published post has that six-digit ID.");
-      if (row.category !== "gallery") return respond("/post modify only edits gallery posts. Use /post update for synced rules or updates.");
-      const category = values.category;
-      const dimension = values.dimension;
-      if (!["events","buildings","places","inprogress"].includes(category)) return respond("Choose a valid gallery category.");
-      if (!["overworld","nether","end"].includes(dimension)) return respond("Choose overworld, nether, or end.");
-      const coordinates = parseCoordinates(cleanText(values.coordinates || "",100));
-      if (values.coordinates && !coordinates) return respond("Coordinates must contain exactly three numbers, such as 120, 64, -30.");
-      let eventData = {};
-      try { eventData = JSON.parse(row.event_data_json || "{}"); } catch {}
-      eventData = { ...eventData, galleryGroup: category, dimension, coordinates };
-      await env.DB.prepare("UPDATE published_posts SET title=?,subtitle=?,group_name=?,event_data_json=?,updated_at=CURRENT_TIMESTAMP WHERE post_id=?")
-        .bind(cleanText(values.title,180),cleanText(values.subtitle,240),category,JSON.stringify(eventData),row.post_id).run();
-      return respond(null,true,{title:"Gallery post modified",description:`Gallery post **${id}** was edited. Its Discord source, body, and images were left unchanged.`,fields:[{name:"Category",value:category,inline:true},{name:"Dimension",value:dimension,inline:true},{name:"Coordinates",value:displayCoordinates(coordinates),inline:false}]});
-    }
-    return respond("Choose remove, update, or modify.");
   }
   if (command.startsWith("gallery.") || ["events.delete","updates.update","updates.delete","rules.update","rules.delete","maintenance.set","maintenance.remove","warning.add","warning.modify","warning.remove","info.add","info.modify","info.remove","hero.modify"].includes(command)) {
     if (!(await hasAdminAccess(env, interaction))) return respond("You don’t have permission to manage website content.");
@@ -1302,8 +1255,20 @@ async function handle(interaction, env) {
     const now = Math.floor(Date.now()/1000);
     await env.DB.prepare("DELETE FROM verification_requests WHERE discord_user_id=? OR expires_at<=?").bind(userId,now).run();
     await env.DB.prepare("INSERT INTO verification_requests(code,discord_user_id,minecraft_name,expires_at,created_at) VALUES(?,?,?,?,?)").bind(code,userId,playerName,now+120,now).run();
-    return respond(null,true,{ title:"Minecraft verification", description:`Run this command in Minecraft within **2 minutes**:
+    return respond(null,true,{ title:"Minecraft verification", description:`Run this command in Minecraft within **2 minutes**:\n```\n/verify ${code}\n````, fields:[{name:"Minecraft username",value:playerName,inline:true},{name:"Expires",value:"In 2 minutes",inline:true}], footer:{text:"Do not share this code with anyone"} });
 ` + "`/verify " + code + "`", fields:[{name:"Minecraft username",value:playerName,inline:true},{name:"Expires",value:"In 2 minutes",inline:true}], footer:{text:"Do not share this code with anyone"} });
+  }
+  if (command === "ign") {
+    const discordId = typeof args.discordname === "object" ? args.discordname.id : args.discordname;
+    if (!/^\\d{17,20}$/.test(String(discordId || ""))) return respond("Select a valid Discord user.", false);
+    const linked = await env.DB.prepare(
+      "SELECT a.minecraft_name FROM account_links a LEFT JOIN hidden_players h ON h.uuid=a.minecraft_uuid WHERE a.discord_user_id=? AND h.uuid IS NULL"
+    ).bind(discordId).first();
+    if (!linked?.minecraft_name) return respond(`<@${discordId}> is not linked to a public Minecraft player.`, false);
+    return respond(null, false, {
+      title: "Linked Minecraft account",
+      description: `<@${discordId}> is linked to this Minecraft player:\\n```\\n${cleanText(linked.minecraft_name,16)}\\n````
+    });
   }
   if (command === "unverify") {
     if (!(await hasAdminAccess(env, interaction))) return respond("You don’t have permission to unlink accounts.");
@@ -1520,7 +1485,7 @@ async function syncConfiguredChannels(env) {
 }
 
 async function ensureGuildCommands(env) {
-  const revision = "player-visibility-v1";
+  const revision = "gold-embeds-ign-v2";
   const current = await env.DB.prepare("SELECT value FROM bot_config WHERE key='registered_command_revision'").first();
   if (current?.value === revision) return;
   if (!env.DISCORD_BOT_TOKEN || !env.DISCORD_APPLICATION_ID || !env.ALLOWED_GUILD_ID) throw new Error("Cannot register Discord commands: required bindings are missing");
