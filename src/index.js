@@ -16,11 +16,11 @@ const REGISTERED_COMMANDS = [
   },
   {
     "name": "youtube",
-    "description": "Show the NoteSMP youtube link"
+    "description": "Show the NoteSMP YouTube link"
   },
   {
     "name": "bluemap",
-    "description": "Show the NoteSMP bluemap link"
+    "description": "Show the NoteSMP BlueMap link"
   },
   {
     "name": "donate",
@@ -1086,7 +1086,7 @@ async function handle(interaction, env) {
   if (Object.prototype.hasOwnProperty.call(publicLinks, command)) {
     const key = publicLinks[command];
     let link = key === "https://www.notesmp.de" ? key : (await env.DB.prepare("SELECT url FROM website_links WHERE link_key=?").bind(key).first())?.url;
-    const label = command === "website" ? "Website" : command[0].toUpperCase() + command.slice(1);
+    const label = { website: "Website", modpack: "Modpack", youtube: "YouTube", bluemap: "BlueMap", donate: "Donate" }[command];
     if (!link || !/^https?:\/\//i.test(link)) return respond(`The ${label} link has not been set on the website yet.`, false);
     return respond(`${label}: <${link}>`, false);
   }
@@ -1506,7 +1506,7 @@ async function syncConfiguredChannels(env) {
 }
 
 async function ensureGuildCommands(env) {
-  const revision = "public-links-commands-v1";
+  const revision = "public-links-commands-v2";
   const current = await env.DB.prepare("SELECT value FROM bot_config WHERE key='registered_command_revision'").first();
   if (current?.value === revision) return;
   if (!env.DISCORD_BOT_TOKEN || !env.DISCORD_APPLICATION_ID || !env.ALLOWED_GUILD_ID) throw new Error("Cannot register Discord commands: required bindings are missing");
