@@ -7,6 +7,26 @@ const MINECRAFT_GOLD = 0xFFAA00;
 
 const REGISTERED_COMMANDS = [
   {
+    "name": "website",
+    "description": "Show the NoteSMP website link"
+  },
+  {
+    "name": "modpack",
+    "description": "Show the NoteSMP modpack link"
+  },
+  {
+    "name": "youtube",
+    "description": "Show the NoteSMP youtube link"
+  },
+  {
+    "name": "bluemap",
+    "description": "Show the NoteSMP bluemap link"
+  },
+  {
+    "name": "donate",
+    "description": "Show the NoteSMP donate link"
+  },
+  {
     "name": "help",
     "description": "Show NoteSMP bot help"
   },
@@ -1062,6 +1082,14 @@ async function handle(interaction, env) {
     args = optionsMap(nestedAction?.options || action?.options || top?.options || []);
   }
   const userId = interaction.member?.user?.id || interaction.user?.id;
+  const publicLinks = { website: "https://www.notesmp.de", modpack: "modpack", youtube: "youtube", bluemap: "bluemap", donate: "donate" };
+  if (Object.prototype.hasOwnProperty.call(publicLinks, command)) {
+    const key = publicLinks[command];
+    let link = key === "https://www.notesmp.de" ? key : (await env.DB.prepare("SELECT url FROM website_links WHERE link_key=?").bind(key).first())?.url;
+    const label = command === "website" ? "Website" : command[0].toUpperCase() + command.slice(1);
+    if (!link || !/^https?:\\/\\//i.test(link)) return respond(`The ${label} link has not been set on the website yet.`, false);
+    return respond(`${label}: <${link}>`, false);
+  }
   if (command === "help") {
     return respond(null, true, { title: "NoteSMP Bot", description: "Event-driven bot connected. Use the available commands to manage NoteSMP." });
   }
@@ -1478,7 +1506,7 @@ async function syncConfiguredChannels(env) {
 }
 
 async function ensureGuildCommands(env) {
-  const revision = "gold-embeds-ign-v2";
+  const revision = "public-links-commands-v1";
   const current = await env.DB.prepare("SELECT value FROM bot_config WHERE key='registered_command_revision'").first();
   if (current?.value === revision) return;
   if (!env.DISCORD_BOT_TOKEN || !env.DISCORD_APPLICATION_ID || !env.ALLOWED_GUILD_ID) throw new Error("Cannot register Discord commands: required bindings are missing");
