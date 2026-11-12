@@ -82,6 +82,39 @@
     "options": [
       {
         "type": 2,
+        "name": "player",
+        "description": "Control public player visibility",
+        "options": [
+          {
+            "type": 1,
+            "name": "hide",
+            "description": "Hide a player from the website",
+            "options": [
+              {
+                "type": 3,
+                "name": "player",
+                "description": "Minecraft username or UUID",
+                "required": true
+              }
+            ]
+          },
+          {
+            "type": 1,
+            "name": "show",
+            "description": "Show a player on the website again",
+            "options": [
+              {
+                "type": 3,
+                "name": "player",
+                "description": "Minecraft username or UUID",
+                "required": true
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": 2,
         "name": "access",
         "description": "Manage administrator access",
         "options": [
